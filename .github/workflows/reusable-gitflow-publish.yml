@@ -392,7 +392,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 'Build and Test Projects'
-        uses: ./.github/actions/build-test
+        uses: Kingsrook/github-actions-library/.github/actions/build-test@main
         with:
           project-type: ${{ inputs.project-type }}
           java-version: ${{ inputs.java-version }}
