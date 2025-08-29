@@ -119,8 +119,8 @@ jobs:
     needs: validate-environment
     strategy:
       matrix:
-        # Include project types based on project-type input
-        project: ${{ fromJSON(inputs.project-type == 'maven' && '["maven"]' || inputs.project-type == 'npm' && '["npm"]' || '["maven", "npm"]') }}
+        # Always include both project types, let the conditional logic handle execution
+        project: [maven, npm]
     steps:
       # ====================================================================
       # STEP 1: CHECKOUT CODE
@@ -136,7 +136,7 @@ jobs:
       # - Installs specified Java version
       # - Configures Maven with caching for performance
       - name: 'Setup Java'
-        if: matrix.project == 'maven'
+        if: matrix.project == 'maven' && contains(inputs.project-type, 'maven')
         uses: actions/setup-java@v4
         with:
           java-version: ${{ inputs.java-version }}
@@ -151,7 +151,7 @@ jobs:
       # - Installs specified Node.js version
       # - Configures NPM with caching for performance
       - name: 'Setup Node.js'
-        if: matrix.project == 'npm'
+        if: matrix.project == 'npm' && contains(inputs.project-type, 'npm')
         uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
@@ -166,7 +166,7 @@ jobs:
       # - Generates test reports and coverage
       # - Fails fast if any tests fail
       - name: 'Test Maven Project'
-        if: matrix.project == 'maven'
+        if: matrix.project == 'maven' && contains(inputs.project-type, 'maven')
         working-directory: ${{ inputs.maven-working-directory }}
         run: |
           echo "🧪 Testing Maven project..."
@@ -182,7 +182,7 @@ jobs:
       # - Executes tests with 'npm test'
       # - Generates coverage reports
       - name: 'Test NPM Project'
-        if: matrix.project == 'npm'
+        if: matrix.project == 'npm' && contains(inputs.project-type, 'npm')
         working-directory: ${{ inputs.npm-working-directory }}
         run: |
           echo "🧪 Testing NPM project..."
@@ -199,7 +199,7 @@ jobs:
       # - Stores as CircleCI artifacts for analysis
       # - Continues even if no reports found (warn mode)
       - name: 'Upload Test Results'
-        if: matrix.project == 'maven'
+        if: matrix.project == 'maven' && contains(inputs.project-type, 'maven')
         uses: actions/upload-artifact@v4
         with:
           name: maven-test-results
@@ -214,7 +214,7 @@ jobs:
       # - Stores as CircleCI artifacts for analysis
       # - Continues even if no reports found (warn mode)
       - name: 'Upload Coverage Reports'
-        if: matrix.project == 'npm'
+        if: matrix.project == 'npm' && contains(inputs.project-type, 'npm')
         uses: actions/upload-artifact@v4
         with:
           name: npm-coverage-reports
