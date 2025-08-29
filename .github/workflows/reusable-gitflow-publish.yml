@@ -505,7 +505,7 @@ jobs:
           fetch-depth: 0
 
       - name: 'Git Operations'
-        uses: ./.github/actions/git-operations
+        uses: Kingsrook/github-actions-library/.github/actions/git-operations@main
         with:
           commit-message: "chore: bump version for next release"
           branch: ${{ github.ref_name }}
