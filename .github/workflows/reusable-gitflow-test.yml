@@ -109,15 +109,8 @@ jobs:
     needs: validate-environment
     strategy:
       matrix:
-        # Always include both project types in the matrix
-        project: [maven, npm]
-        exclude:
-          # Exclude Maven if not required for this project type
-          - project: maven
-            when: ${{ !contains(inputs.project-type, 'maven') }}
-          # Exclude NPM if not required for this project type
-          - project: npm
-            when: ${{ !contains(inputs.project-type, 'npm') }}
+        # Include project types based on project-type input
+        project: ${{ fromJSON(inputs.project-type == 'maven' && '["maven"]' || inputs.project-type == 'npm' && '["npm"]' || '["maven", "npm"]') }}
     steps:
       # ====================================================================
       # STEP 1: CHECKOUT CODE
