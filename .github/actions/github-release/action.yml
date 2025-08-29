@@ -1,0 +1,368 @@
+# =============================================================================
+# GITHUB RELEASE COMPOSITE ACTION
+# =============================================================================
+# This action provides standardized GitHub release creation with rich content,
+# asset uploads, and release note generation.
+#
+# USAGE:
+#   - name: '📋 Create GitHub Release'
+#     uses: ./.github/actions/github-release
+#     with:
+#       tag-name: 'v1.2.3'
+#       release-name: 'Release 1.2.3'
+#       body: 'Release notes content'
+#       draft: false
+#       prerelease: false
+#       upload-assets: true
+#       asset-paths: 'dist/*.zip,target/*.jar'
+#
+# INPUTS:
+#   - tag-name: Git tag name for the release
+#   - release-name: Display name for the release
+#   - body: Release notes content (markdown)
+#   - draft: Whether to create as draft
+#   - prerelease: Whether to mark as prerelease
+#   - upload-assets: Whether to upload assets
+#   - asset-paths: Paths to assets to upload (comma-separated)
+#   - generate-notes: Whether to auto-generate release notes
+#   - notes-from-tag: Whether to use tag message as notes
+#   - target-commitish: Target commit/branch for the release
+#   - discussion-category: Discussion category for the release
+#   - make-latest: Whether to make this the latest release
+#
+# OUTPUTS:
+#   - release-id: ID of the created release
+#   - release-url: URL of the created release
+#   - upload-url: URL for uploading assets
+#   - assets-uploaded: Whether assets were uploaded
+#   - assets-count: Number of assets uploaded
+# =============================================================================
+
+name: 'GitHub Release'
+description: 'Creates GitHub releases with rich content and asset management'
+
+inputs:
+  tag-name:
+    description: 'Git tag name for the release'
+    required: true
+  release-name:
+    description: 'Display name for the release'
+    required: false
+    default: ''
+  body:
+    description: 'Release notes content (markdown)'
+    required: false
+    default: ''
+  draft:
+    description: 'Whether to create as draft'
+    required: false
+    default: 'false'
+  prerelease:
+    description: 'Whether to mark as prerelease'
+    required: false
+    default: 'false'
+  upload-assets:
+    description: 'Whether to upload assets'
+    required: false
+    default: 'false'
+  asset-paths:
+    description: 'Paths to assets to upload (comma-separated)'
+    required: false
+    default: ''
+  generate-notes:
+    description: 'Whether to auto-generate release notes'
+    required: false
+    default: 'false'
+  notes-from-tag:
+    description: 'Whether to use tag message as notes'
+    required: false
+    default: 'false'
+  target-commitish:
+    description: 'Target commit/branch for the release'
+    required: false
+    default: ''
+  discussion-category:
+    description: 'Discussion category for the release'
+    required: false
+    default: ''
+  make-latest:
+    description: 'Whether to make this the latest release'
+    required: false
+    default: 'true'
+
+outputs:
+  release-id:
+    description: 'ID of the created release'
+    value: ${{ steps.create-release.outputs.release-id }}
+  release-url:
+    description: 'URL of the created release'
+    value: ${{ steps.create-release.outputs.release-url }}
+  upload-url:
+    description: 'URL for uploading assets'
+    value: ${{ steps.create-release.outputs.upload-url }}
+  assets-uploaded:
+    description: 'Whether assets were uploaded'
+    value: ${{ steps.upload-assets.outputs.assets-uploaded }}
+  assets-count:
+    description: 'Number of assets uploaded'
+    value: ${{ steps.upload-assets.outputs.assets-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🔍 Validate Release Parameters'
+      shell: bash
+      run: |
+        echo "🔍 Validating release parameters..."
+        
+        # Check required inputs
+        if [ -z "${{ inputs.tag-name }}" ]; then
+          echo "❌ tag-name is required"
+          exit 1
+        fi
+        
+        # Validate tag format (should start with 'v' and be semantic version)
+        TAG_NAME="${{ inputs.tag-name }}"
+        if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          echo "⚠️ Tag format warning: $TAG_NAME (expected format: vX.Y.Z)"
+        fi
+        
+        # Check if tag exists
+        if ! git tag -l | grep -q "^$TAG_NAME$"; then
+          echo "⚠️ Tag $TAG_NAME not found in local repository"
+          echo "This may cause issues with the release"
+        fi
+        
+        echo "✅ Release parameters validated"
+
+    - name: '📝 Prepare Release Notes'
+      id: prepare-notes
+      shell: bash
+      run: |
+        echo "📝 Preparing release notes..."
+        
+        RELEASE_BODY="${{ inputs.body }}"
+        TAG_NAME="${{ inputs.tag-name }}"
+        
+        # Generate notes from tag if requested
+        if [ "${{ inputs.notes-from-tag }}" = "true" ]; then
+          echo "🔍 Getting notes from tag: $TAG_NAME"
+          TAG_MESSAGE=$(git tag -l --format='%(contents)' "$TAG_NAME" 2>/dev/null)
+          
+          if [ -n "$TAG_MESSAGE" ]; then
+            RELEASE_BODY="$TAG_MESSAGE"
+            echo "✅ Using tag message as release notes"
+          else
+            echo "⚠️ No tag message found, using provided body"
+          fi
+        fi
+        
+        # Generate default notes if none provided
+        if [ -z "$RELEASE_BODY" ]; then
+          echo "📝 Generating default release notes..."
+          
+          # Extract version from tag
+          VERSION=$(echo "$TAG_NAME" | sed 's/^v//')
+          
+          # Get commit range since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ] && [ "$LAST_TAG" != "$TAG_NAME" ]; then
+            COMMIT_RANGE="$LAST_TAG..$TAG_NAME"
+            COMMIT_COUNT=$(git log --oneline "$COMMIT_RANGE" | wc -l)
+            
+            RELEASE_BODY="## 🚀 Release $VERSION
+            
+            ### 📊 Summary
+            - **Version**: $VERSION
+            - **Commits**: $COMMIT_COUNT commits since $LAST_TAG
+            - **Date**: $(date -u +"%Y-%m-%d %H:%M UTC")
+            
+            ### 🔄 Changes
+            \`\`\`
+            $(git log --oneline --no-merges "$COMMIT_RANGE" | head -20)
+            \`\`\`
+            
+            ### 📋 Release Notes
+            See the [changelog](CHANGELOG.md) for detailed release notes.
+            
+            ---
+            *Released by GitHub Actions on $(date -u +"%Y-%m-%d %H:%M UTC")*"
+          else
+            RELEASE_BODY="## 🚀 Release $VERSION
+            
+            ### 📊 Summary
+            - **Version**: $VERSION
+            - **Date**: $(date -u +"%Y-%m-%d %H:%M UTC")
+            
+            ### 📋 Release Notes
+            See the [changelog](CHANGELOG.md) for detailed release notes.
+            
+            ---
+            *Released by GitHub Actions on $(date -u +"%Y-%m-%d %H:%M UTC")*"
+          fi
+          
+          echo "✅ Generated default release notes"
+        fi
+        
+        # Store notes for later use
+        echo "RELEASE_BODY<<EOF" >> $GITHUB_ENV
+        echo "$RELEASE_BODY" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+        
+        echo "📝 Release notes prepared (${#RELEASE_BODY} characters)"
+
+    - name: '📋 Create GitHub Release'
+      id: create-release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        tag_name: ${{ inputs.tag-name }}
+        release_name: ${{ inputs.release-name || inputs.tag-name }}
+        body: ${{ env.RELEASE_BODY }}
+        draft: ${{ inputs.draft }}
+        prerelease: ${{ inputs.prerelease }}
+        target_commitish: ${{ inputs.target-commitish || '' }}
+        discussion_category_name: ${{ inputs.discussion-category || '' }}
+        make_latest: ${{ inputs.make-latest }}
+
+    - name: '📤 Upload Release Assets'
+      if: inputs.upload-assets == 'true' && inputs.asset-paths != ''
+      id: upload-assets
+      shell: bash
+      run: |
+        echo "📤 Uploading release assets..."
+        
+        # Set default values for outputs
+        echo "assets-uploaded=false" >> $GITHUB_OUTPUT
+        echo "assets-count=0" >> $GITHUB_OUTPUT
+        
+        ARTIFACT_PATHS="${{ inputs.asset-paths }}"
+        IFS=',' read -ra PATHS <<< "$ARTIFACT_PATHS"
+        
+        UPLOAD_SUCCESS="true"
+        UPLOADED_COUNT=0
+        
+        for path_pattern in "${PATHS[@]}"; do
+          path_pattern=$(echo "$path_pattern" | xargs)  # Trim whitespace
+          
+          # Expand glob patterns
+          for path in $path_pattern; do
+            if [ -e "$path" ]; then
+              echo "📤 Uploading: $path"
+              
+              # Get file info
+              if [ -f "$path" ]; then
+                FILE_SIZE=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo "0")
+                echo "📊 File size: ${FILE_SIZE} bytes"
+              fi
+              
+              # Upload using GitHub CLI if available
+              if command -v gh >/dev/null 2>&1; then
+                gh release upload "${{ inputs.tag-name }}" "$path" --clobber
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ Asset uploaded successfully: $path"
+                  UPLOADED_COUNT=$((UPLOADED_COUNT + 1))
+                else
+                  echo "❌ Failed to upload asset: $path"
+                  UPLOAD_SUCCESS="false"
+                fi
+              else
+                # Fallback to curl upload
+                echo "⚠️ GitHub CLI not available, using curl fallback"
+                
+                # Extract filename
+                FILENAME=$(basename "$path")
+                
+                # Upload asset
+                curl -X POST \
+                  -H "Authorization: token ${{ github.token }}" \
+                  -H "Content-Type: application/octet-stream" \
+                  --data-binary "@$path" \
+                  "${{ steps.create-release.outputs.upload-url }}?name=$FILENAME"
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ Asset uploaded successfully: $path"
+                  UPLOADED_COUNT=$((UPLOADED_COUNT + 1))
+                else
+                  echo "❌ Failed to upload asset: $path"
+                  UPLOAD_SUCCESS="false"
+                fi
+              fi
+            else
+              echo "⚠️ Asset not found: $path"
+            fi
+          done
+        done
+        
+        if [ "$UPLOAD_SUCCESS" = "true" ] && [ "$UPLOADED_COUNT" -gt 0 ]; then
+          echo "✅ All assets uploaded successfully (${UPLOADED_COUNT} assets)"
+          echo "assets-uploaded=true" >> $GITHUB_OUTPUT
+          echo "assets-count=${UPLOADED_COUNT}" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Some assets failed to upload"
+          echo "assets-uploaded=false" >> $GITHUB_OUTPUT
+          echo "assets-count=${UPLOADED_COUNT}" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '🔍 Verify Release'
+      shell: bash
+      run: |
+        echo "🔍 Verifying GitHub release..."
+        
+        TAG_NAME="${{ inputs.tag-name }}"
+        RELEASE_ID="${{ steps.create-release.outputs.release-id }}"
+        RELEASE_URL="${{ steps.create-release.outputs.release-url }}"
+        
+        echo "📋 Release Details:"
+        echo "  - Tag: $TAG_NAME"
+        echo "  - ID: $RELEASE_ID"
+        echo "  - URL: $RELEASE_URL"
+        echo "  - Draft: ${{ inputs.draft }}"
+        echo "  - Prerelease: ${{ inputs.prerelease }}"
+        echo "  - Make Latest: ${{ inputs.make-latest }}"
+        
+        # Verify tag exists
+        if git tag -l | grep -q "^$TAG_NAME$"; then
+          echo "✅ Git tag exists: $TAG_NAME"
+        else
+          echo "⚠️ Git tag not found: $TAG_NAME"
+        fi
+        
+        # Verify release URL is accessible
+        if [ -n "$RELEASE_URL" ]; then
+          echo "✅ Release URL: $RELEASE_URL"
+        else
+          echo "⚠️ Release URL not available"
+        fi
+
+    - name: '📋 GitHub Release Summary'
+      shell: bash
+      run: |
+        echo "📋 GitHub Release Summary"
+        echo "=========================="
+        echo "Tag Name: ${{ inputs.tag-name }}"
+        echo "Release Name: ${{ inputs.release-name || inputs.tag-name }}"
+        echo "Release ID: ${{ steps.create-release.outputs.release-id || 'N/A' }}"
+        echo "Release URL: ${{ steps.create-release.outputs.release-url || 'N/A' }}"
+        echo "Upload URL: ${{ steps.create-release.outputs.upload-url || 'N/A' }}"
+        echo "Draft: ${{ inputs.draft }}"
+        echo "Prerelease: ${{ inputs.prerelease }}"
+        echo "Upload Assets: ${{ inputs.upload-assets }}"
+        echo "Generate Notes: ${{ inputs.generate-notes }}"
+        echo "Notes From Tag: ${{ inputs.notes-from-tag }}"
+        echo "Target Commitish: ${{ inputs.target-commitish || 'N/A' }}"
+        echo "Discussion Category: ${{ inputs.discussion-category || 'N/A' }}"
+        echo "Make Latest: ${{ inputs.make-latest }}"
+        
+        if [ "${{ inputs.upload-assets }}" = "true" ]; then
+          echo "Assets Uploaded: ${{ steps.upload-assets.outputs.assets-uploaded || 'N/A' }}"
+          echo "Assets Count: ${{ steps.upload-assets.outputs.assets-count || 'N/A' }}"
+          echo "Asset Paths: ${{ inputs.asset-paths }}"
+        fi
+        
+        echo ""
+        echo "🎉 GitHub release created successfully!"
+        echo "🌐 View at: ${{ steps.create-release.outputs.release-url || 'N/A' }}"

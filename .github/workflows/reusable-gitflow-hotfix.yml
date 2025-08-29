@@ -1,0 +1,412 @@
+# =============================================================================
+# REUSABLE GITFLOW HOTFIX WORKFLOW
+# =============================================================================
+# This workflow provides standardized hotfix release publishing for hotfix/*
+# branches across all QQQ repositories. It implements the DRY principle by
+# centralizing all hotfix release logic in one reusable workflow.
+#
+# USAGE:
+#   This workflow is triggered by:
+#   - Push to hotfix/* branches
+#   - Manual workflow dispatch
+#
+# INPUTS:
+#   - project-type: 'maven', 'npm', or 'hybrid'
+#   - java-version: Java version for Maven builds
+#   - node-version: Node.js version for NPM builds
+#   - maven-args: Additional Maven arguments
+#   - npm-args: Additional NPM arguments
+#   - skip-tests: Whether to skip tests (default: false)
+#   - skip-lint: Whether to skip linting (default: false)
+#   - create-github-release: Whether to create GitHub release (default: true)
+#   - hotfix-type: Type of hotfix (patch, minor, major) (default: patch)
+#
+# SECRETS:
+#   - GITHUB_TOKEN: GitHub API access
+#   - GPG_PRIVATE_KEY_B64: Base64 encoded GPG private key
+#   - GPG_KEYNAME: GPG key identifier
+#   - GPG_PASSPHRASE: GPG key passphrase
+#   - CENTRAL_USERNAME: Maven Central username
+#   - CENTRAL_PASSWORD: Maven Central password
+#   - NPM_TOKEN: NPM registry token
+#
+# OUTPUTS:
+#   - version: The calculated version for this hotfix
+#   - hotfix-type: Type of hotfix applied
+#   - maven-version: Maven version (if applicable)
+#   - npm-version: NPM version (if applicable)
+#   - release-url: URL to the created GitHub release (if applicable)
+# =============================================================================
+
+name: 'Reusable GitFlow Hotfix Workflow'
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Type of project (maven, npm, or hybrid)'
+        required: true
+        default: 'hybrid'
+        type: string
+      java-version:
+        description: 'Java version for Maven builds'
+        required: false
+        default: '17'
+        type: string
+      node-version:
+        description: 'Node.js version for NPM builds'
+        required: false
+        default: '18'
+        type: string
+      maven-args:
+        description: 'Additional Maven arguments'
+        required: false
+        default: ''
+        type: string
+      npm-args:
+        description: 'Additional NPM arguments'
+        required: false
+        default: ''
+        type: string
+      skip-tests:
+        description: 'Whether to skip tests'
+        required: false
+        default: false
+        type: boolean
+      skip-lint:
+        description: 'Whether to skip linting'
+        required: false
+        default: false
+        type: boolean
+      create-github-release:
+        description: 'Whether to create GitHub release'
+        required: false
+        default: true
+        type: boolean
+      hotfix-type:
+        description: 'Type of hotfix (patch, minor, major)'
+        required: false
+        default: 'patch'
+        type: string
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+        description: 'GitHub token for API access'
+      GPG_PRIVATE_KEY_B64:
+        required: true
+        description: 'Base64 encoded GPG private key'
+      GPG_KEYNAME:
+        required: true
+        description: 'GPG key identifier'
+      GPG_PASSPHRASE:
+        required: true
+        description: 'GPG key passphrase'
+      CENTRAL_USERNAME:
+        required: true
+        description: 'Maven Central username'
+      CENTRAL_PASSWORD:
+        required: true
+        description: 'Maven Central password'
+      NPM_TOKEN:
+        required: true
+        description: 'NPM registry token'
+    outputs:
+      version:
+        description: 'The calculated version for this hotfix'
+        value: ${{ jobs.deploy-hotfix.outputs.version }}
+      hotfix-type:
+        description: 'Type of hotfix applied'
+        value: ${{ jobs.deploy-hotfix.outputs.hotfix-type }}
+      maven-version:
+        description: 'Maven version (if applicable)'
+        value: ${{ jobs.deploy-hotfix.outputs.maven-version }}
+      npm-version:
+        description: 'NPM version (if applicable)'
+        value: ${{ jobs.deploy-hotfix.outputs.npm-version }}
+      release-url:
+        description: 'URL to the created GitHub release (if applicable)'
+        value: ${{ jobs.deploy-hotfix.outputs.release-url }}
+
+jobs:
+  validate-environment:
+    name: '🔍 Validate Environment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: '📥 Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version calculation
+      
+      - name: '🔍 Validate Environment & Secrets'
+        uses: ./.github/actions/validate-environment
+        with:
+          project-type: ${{ inputs.project-type }}
+          require-github-token: 'true'
+          require-gpg: 'true'
+          require-maven: ${{ contains(inputs.project-type, 'maven') }}
+          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+
+  deploy-hotfix:
+    name: '🚨 Deploy Hotfix Release'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    environment: hotfix
+    outputs:
+      version: ${{ steps.calculate-version.outputs.version }}
+      hotfix-type: ${{ steps.calculate-version.outputs.hotfix-type }}
+      maven-version: ${{ steps.calculate-version.outputs.maven-version }}
+      npm-version: ${{ steps.calculate-version.outputs.npm-version }}
+      release-url: ${{ steps.create-github-release.outputs.release-url }}
+    steps:
+      - name: '📥 Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version calculation
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: '🔧 Setup Java'
+        if: contains(inputs.project-type, 'maven')
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java-version }}
+          cache: 'maven'
+
+      - name: '🔧 Setup Node.js'
+        if: contains(inputs.project-type, 'npm')
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      - name: '🔐 Setup GPG'
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: '📊 Calculate Hotfix Version'
+        id: calculate-version
+        run: |
+          # Get the current version from the hotfix branch
+          # This should be the base version we're hotfixing (e.g., 1.2.0)
+          if [ -f "pom.xml" ]; then
+            BASE_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+            # Remove any -SNAPSHOT suffix
+            BASE_VERSION=$(echo "$BASE_VERSION" | sed 's/-SNAPSHOT$//')
+          elif [ -f "package.json" ]; then
+            BASE_VERSION=$(node -p "require('./package.json').version")
+            # Remove any -SNAPSHOT suffix
+            BASE_VERSION=$(echo "$BASE_VERSION" | sed 's/-SNAPSHOT$//')
+          else
+            echo "❌ No pom.xml or package.json found"
+            exit 1
+          fi
+          
+          # Parse version components (e.g., 1.2.3 -> 1, 2, 3)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          
+          # Apply hotfix based on type
+          HOTFIX_TYPE="${{ inputs.hotfix-type }}"
+          case "$HOTFIX_TYPE" in
+            "patch")
+              # Increment patch version (1.2.3 -> 1.2.4)
+              NEW_PATCH=$((PATCH + 1))
+              VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+              ;;
+            "minor")
+              # Increment minor version (1.2.3 -> 1.3.0)
+              NEW_MINOR=$((MINOR + 1))
+              VERSION="${MAJOR}.${NEW_MINOR}.0"
+              ;;
+            "major")
+              # Increment major version (1.2.3 -> 2.0.0)
+              NEW_MAJOR=$((MAJOR + 1))
+              VERSION="${NEW_MAJOR}.0.0"
+              ;;
+            *)
+              echo "❌ Invalid hotfix type: $HOTFIX_TYPE"
+              echo "Valid types: patch, minor, major"
+              exit 1
+              ;;
+          esac
+          
+          # Set outputs
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "hotfix-type=${HOTFIX_TYPE}" >> $GITHUB_OUTPUT
+          
+          # Calculate Maven version if applicable
+          if [ "${{ contains(inputs.project-type, 'maven') }}" = "true" ]; then
+            echo "maven-version=${VERSION}" >> $GITHUB_OUTPUT
+          fi
+          
+          # Calculate NPM version if applicable
+          if [ "${{ contains(inputs.project-type, 'npm') }}" = "true" ]; then
+            echo "npm-version=${VERSION}" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "🎯 Calculated hotfix version: ${VERSION} (${HOTFIX_TYPE} increment from ${BASE_VERSION})"
+
+      - name: '🧪 Run Tests (Maven)'
+        if: contains(inputs.project-type, 'maven') && inputs.skip-tests != true
+        run: |
+          echo "🧪 Running Maven tests..."
+          mvn clean test ${{ inputs.maven-args }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: '🧪 Run Tests (NPM)'
+        if: contains(inputs.project-type, 'npm') && inputs.skip-tests != true
+        run: |
+          echo "🧪 Running NPM tests..."
+          npm ci
+          npm run lint ${{ inputs.npm-args }}
+          npm test ${{ inputs.npm-args }}
+
+      - name: '🔍 Run Linting (NPM)'
+        if: contains(inputs.project-type, 'npm') && inputs.skip-lint != true
+        run: |
+          echo "🔍 Running NPM linting..."
+          npm run lint ${{ inputs.npm-args }}
+
+      - name: '📦 Build & Deploy Hotfix (Maven)'
+        if: contains(inputs.project-type, 'maven')
+        run: |
+          echo "📦 Building and deploying Maven hotfix: ${{ steps.calculate-version.outputs.version }}"
+          
+          # Update Maven version to hotfix version
+          mvn versions:set -DnewVersion="${{ steps.calculate-version.outputs.version }}" -DgenerateBackupPoms=false
+          
+          # Build and deploy to Maven Central
+          mvn clean deploy -DskipTests=${{ inputs.skip-tests }} ${{ inputs.maven-args }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+
+      - name: '📦 Build & Deploy Hotfix (NPM)'
+        if: contains(inputs.project-type, 'npm')
+        run: |
+          echo "📦 Building and deploying NPM hotfix: ${{ steps.calculate-version.outputs.version }}"
+          
+          # Update NPM version to hotfix version
+          npm version "${{ steps.calculate-version.outputs.version }}" --no-git-tag-version
+          
+          # Build the project
+          npm run build ${{ inputs.npm-args }}
+          
+          # Publish to NPM with latest tag
+          npm publish --tag latest ${{ inputs.npm-args }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: '🏷️ Create Git Tag'
+        run: |
+          echo "🏷️ Creating Git tag: ${{ steps.calculate-version.outputs.version }}"
+          
+          # Configure Git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create and push tag
+          git tag -a "v${{ steps.calculate-version.outputs.version }}" -m "🚨 Hotfix Release ${{ steps.calculate-version.outputs.version }} (${{ steps.calculate-version.outputs.hotfix-type }})"
+          git push origin "v${{ steps.calculate-version.outputs.version }}"
+          
+          echo "✅ Git tag v${{ steps.calculate-version.outputs.version }} created and pushed"
+
+      - name: '📝 Commit Version Changes'
+        run: |
+          echo "📝 Committing version changes..."
+          
+          # Add all changes
+          git add .
+          
+          # Check if there are changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "🚨 Hotfix Release ${{ steps.calculate-version.outputs.version }} (${{ steps.calculate-version.outputs.hotfix-type }})"
+            git push origin ${{ github.ref_name }}
+            echo "✅ Version changes committed and pushed"
+          else
+            echo "ℹ️ No version changes to commit"
+          fi
+
+      - name: '📋 Create GitHub Release'
+        if: inputs.create-github-release
+        id: create-github-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ steps.calculate-version.outputs.version }}"
+          release_name: "Hotfix Release ${{ steps.calculate-version.outputs.version }}"
+          draft: false
+          prerelease: false
+          body: |
+            ## 🚨 Hotfix Release ${{ steps.calculate-version.outputs.version }}
+            
+            ### 🔧 What's Fixed
+            - Critical bug fixes and security patches
+            - ${{ steps.calculate-version.outputs.hotfix-type }} version increment
+            - All tests passing
+            - GPG signed artifacts
+            - Published to Maven Central and/or NPM
+            
+            ### 📦 Installation
+            
+            **Maven:**
+            ```xml
+            <dependency>
+                <groupId>com.kingsrook</groupId>
+                <artifactId>your-artifact</artifactId>
+                <version>${{ steps.calculate-version.outputs.version }}</version>
+            </dependency>
+            ```
+            
+            **NPM:**
+            ```bash
+            npm install @kingsrook/your-package@${{ steps.calculate-version.outputs.version }}
+            ```
+            
+            ### 🚨 Hotfix Details
+            - **Type**: ${{ steps.calculate-version.outputs.hotfix-type }} increment
+            - **Base Version**: Previous stable release
+            - **Priority**: High (critical fixes)
+            
+            ### 📋 Release Notes
+            See the [changelog](CHANGELOG.md) for detailed release notes.
+            
+            ### 🔐 Verification
+            All artifacts are GPG signed and published to official repositories.
+            
+            ---
+            *Hotfix released by GitHub Actions on ${{ github.event.head_commit.timestamp || github.run_started_at }}*
+
+      - name: '📊 Upload Build Artifacts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'hotfix-build-artifacts'
+          path: |
+            target/
+            dist/
+            coverage/
+          retention-days: 90
+
+      - name: '🎉 Hotfix Release Complete'
+        run: |
+          echo "🎉 Hotfix release completed successfully!"
+          echo "📦 Version: ${{ steps.calculate-version.outputs.version }}"
+          echo "🚨 Hotfix Type: ${{ steps.calculate-version.outputs.hotfix-type }}"
+          echo "☕ Maven Version: ${{ steps.calculate-version.outputs.maven-version || 'N/A' }}"
+          echo "📦 NPM Version: ${{ steps.calculate-version.outputs.npm-version || 'N/A' }}"
+          echo "🏷️ Git Tag: v${{ steps.calculate-version.outputs.version }}"
+          if [ "${{ inputs.create-github-release }}" = "true" ]; then
+            echo "📋 GitHub Release: ${{ steps.create-github-release.outputs.release-url || 'Created' }}"
+          fi
+          echo ""
+          echo "🚀 Next steps:"
+          echo "  1. Verify artifacts in Maven Central and/or NPM"
+          echo "  2. Test the hotfix thoroughly"
+          echo "  3. Merge hotfix branch to main and develop"
+          echo "  4. Update documentation if needed"

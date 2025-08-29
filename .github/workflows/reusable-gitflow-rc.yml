@@ -1,0 +1,305 @@
+# =============================================================================
+# REUSABLE GITFLOW RC WORKFLOW
+# =============================================================================
+# This workflow provides standardized release candidate publishing for release/*
+# branches across all QQQ repositories. It implements the DRY principle by
+# centralizing all RC publishing logic in one reusable workflow.
+#
+# USAGE:
+#   This workflow is triggered by:
+#   - Push to release/* branches
+#   - Manual workflow dispatch
+#
+# INPUTS:
+#   - project-type: 'maven', 'npm', or 'hybrid'
+#   - java-version: Java version for Maven builds
+#   - node-version: Node.js version for NPM builds
+#   - maven-args: Additional Maven arguments
+#   - npm-args: Additional NPM arguments
+#   - skip-tests: Whether to skip tests (default: false)
+#   - skip-lint: Whether to skip linting (default: false)
+#
+# SECRETS:
+#   - GITHUB_TOKEN: GitHub API access
+#   - GPG_PRIVATE_KEY_B64: Base64 encoded GPG private key
+#   - GPG_KEYNAME: GPG key identifier
+#   - GPG_PASSPHRASE: GPG key passphrase
+#   - CENTRAL_USERNAME: Maven Central username
+#   - CENTRAL_PASSWORD: Maven Central password
+#   - NPM_TOKEN: NPM registry token
+#
+# OUTPUTS:
+#   - version: The calculated version for this RC
+#   - rc-number: The RC number extracted from branch
+#   - maven-version: Maven version (if applicable)
+#   - npm-version: NPM version (if applicable)
+# =============================================================================
+
+name: 'Reusable GitFlow RC Workflow'
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Type of project (maven, npm, or hybrid)'
+        required: true
+        default: 'hybrid'
+        type: string
+      java-version:
+        description: 'Java version for Maven builds'
+        required: false
+        default: '17'
+        type: string
+      node-version:
+        description: 'Node.js version for NPM builds'
+        required: false
+        default: '18'
+        type: string
+      maven-args:
+        description: 'Additional Maven arguments'
+        required: false
+        default: ''
+        type: string
+      npm-args:
+        description: 'Additional NPM arguments'
+        required: false
+        default: ''
+        type: string
+      skip-tests:
+        description: 'Whether to skip tests'
+        required: false
+        default: false
+        type: boolean
+      skip-lint:
+        description: 'Whether to skip linting'
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+        description: 'GitHub token for API access'
+      GPG_PRIVATE_KEY_B64:
+        required: true
+        description: 'Base64 encoded GPG private key'
+      GPG_KEYNAME:
+        required: true
+        description: 'GPG key identifier'
+      GPG_PASSPHRASE:
+        required: true
+        description: 'GPG key passphrase'
+      CENTRAL_USERNAME:
+        required: true
+        description: 'Maven Central username'
+      CENTRAL_PASSWORD:
+        required: true
+        description: 'Maven Central password'
+      NPM_TOKEN:
+        required: true
+        description: 'NPM registry token'
+    outputs:
+      version:
+        description: 'The calculated version for this RC'
+        value: ${{ jobs.deploy-rc.outputs.version }}
+      rc-number:
+        description: 'The RC number extracted from branch'
+        value: ${{ jobs.deploy-rc.outputs.rc-number }}
+      maven-version:
+        description: 'Maven version (if applicable)'
+        value: ${{ jobs.deploy-rc.outputs.maven-version }}
+      npm-version:
+        description: 'NPM version (if applicable)'
+        value: ${{ jobs.deploy-rc.outputs.npm-version }}
+
+jobs:
+  validate-environment:
+    name: '🔍 Validate Environment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: '📥 Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version calculation
+      
+      - name: '🔍 Validate Environment & Secrets'
+        uses: ./.github/actions/validate-environment
+        with:
+          project-type: ${{ inputs.project-type }}
+          require-github-token: 'true'
+          require-gpg: 'true'
+          require-maven: ${{ contains(inputs.project-type, 'maven') }}
+          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+
+  deploy-rc:
+    name: '🚀 Deploy Release Candidate'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    environment: rc
+    outputs:
+      version: ${{ steps.calculate-version.outputs.version }}
+      rc-number: ${{ steps.calculate-version.outputs.rc-number }}
+      maven-version: ${{ steps.calculate-version.outputs.maven-version }}
+      npm-version: ${{ steps.calculate-version.outputs.npm-version }}
+    steps:
+      - name: '📥 Checkout Repository'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version calculation
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: '🔧 Setup Java'
+        if: contains(inputs.project-type, 'maven')
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java-version }}
+          cache: 'maven'
+
+      - name: '🔧 Setup Node.js'
+        if: contains(inputs.project-type, 'npm')
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      - name: '🔐 Setup GPG'
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: '📊 Calculate Version & RC Number'
+        id: calculate-version
+        run: |
+          # Extract RC number from branch name (e.g., release/1.2.0 -> 1)
+          BRANCH_NAME="${{ github.ref_name }}"
+          RC_NUMBER=$(echo "$BRANCH_NAME" | sed -n 's/release\/.*-RC\([0-9]*\)/\1/p')
+          if [ -z "$RC_NUMBER" ]; then
+            RC_NUMBER="1"  # Default to RC1 if no number specified
+          fi
+          
+          # Calculate base version from branch (e.g., release/1.2.0 -> 1.2.0)
+          BASE_VERSION=$(echo "$BRANCH_NAME" | sed 's/release\///')
+          
+          # For RC, we use the base version as-is (e.g., 1.2.0-RC1)
+          VERSION="${BASE_VERSION}-RC${RC_NUMBER}"
+          
+          # Set outputs
+          echo "rc-number=${RC_NUMBER}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          
+          # Calculate Maven version if applicable
+          if [ "${{ contains(inputs.project-type, 'maven') }}" = "true" ]; then
+            if [ -f "pom.xml" ]; then
+              MAVEN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+              echo "maven-version=${MAVEN_VERSION}" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          # Calculate NPM version if applicable
+          if [ "${{ contains(inputs.project-type, 'npm') }}" = "true" ]; then
+            if [ -f "package.json" ]; then
+              NPM_VERSION=$(node -p "require('./package.json').version")
+              echo "npm-version=${NPM_VERSION}" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          echo "🎯 Calculated RC version: ${VERSION} (RC${RC_NUMBER})"
+
+      - name: '🧪 Run Tests (Maven)'
+        if: contains(inputs.project-type, 'maven') && inputs.skip-tests != 'true'
+        run: |
+          echo "🧪 Running Maven tests..."
+          mvn clean test ${{ inputs.maven-args }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: '🧪 Run Tests (NPM)'
+        if: contains(inputs.project-type, 'npm') && inputs.skip-tests != 'true'
+        run: |
+          echo "🧪 Running NPM tests..."
+          npm ci
+          npm run lint ${{ inputs.npm-args }}
+          npm test ${{ inputs.npm-args }}
+
+      - name: '🔍 Run Linting (NPM)'
+        if: contains(inputs.project-type, 'npm') && inputs.skip-lint != 'true'
+        run: |
+          echo "🔍 Running NPM linting..."
+          npm run lint ${{ inputs.npm-args }}
+
+      - name: '📦 Build & Deploy RC (Maven)'
+        if: contains(inputs.project-type, 'maven')
+        run: |
+          echo "📦 Building and deploying Maven RC: ${{ steps.calculate-version.outputs.version }}"
+          
+          # Update Maven version to RC version
+          mvn versions:set -DnewVersion="${{ steps.calculate-version.outputs.version }}" -DgenerateBackupPoms=false
+          
+          # Build and deploy to Maven Central
+          mvn clean deploy -DskipTests=${{ inputs.skip-tests }} ${{ inputs.maven-args }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+
+      - name: '📦 Build & Deploy RC (NPM)'
+        if: contains(inputs.project-type, 'npm')
+        run: |
+          echo "📦 Building and deploying NPM RC: ${{ steps.calculate-version.outputs.version }}"
+          
+          # Update NPM version to RC version
+          npm version "${{ steps.calculate-version.outputs.version }}" --no-git-tag-version
+          
+          # Build the project
+          npm run build ${{ inputs.npm-args }}
+          
+          # Publish to NPM with RC tag
+          npm publish --tag rc ${{ inputs.npm-args }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: '📝 Commit Version Changes'
+        run: |
+          echo "📝 Committing version changes..."
+          
+          # Configure Git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add all changes
+          git add .
+          
+          # Check if there are changes to commit
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "🚀 Release Candidate ${{ steps.calculate-version.outputs.version }} (RC${{ steps.calculate-version.outputs.rc-number }})"
+            git push origin ${{ github.ref_name }}
+            echo "✅ Version changes committed and pushed"
+          else
+            echo "ℹ️ No version changes to commit"
+          fi
+
+      - name: '📊 Upload Build Artifacts'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'rc-build-artifacts'
+          path: |
+            target/
+            dist/
+            coverage/
+          retention-days: 30
+
+      - name: '🎉 RC Deployment Complete'
+        run: |
+          echo "🎉 Release Candidate deployment completed successfully!"
+          echo "📦 Version: ${{ steps.calculate-version.outputs.version }}"
+          echo "🔢 RC Number: ${{ steps.calculate-version.outputs.rc-number }}"
+          echo "☕ Maven Version: ${{ steps.calculate-version.outputs.maven-version || 'N/A' }}"
+          echo "📦 NPM Version: ${{ steps.calculate-version.outputs.npm-version || 'N/A' }}"
+          echo ""
+          echo "🚀 Next steps:"
+          echo "  1. Test the RC thoroughly"
+          echo "  2. If issues found, create hotfix branch and increment RC number"
+          echo "  3. If ready for release, merge to main branch"

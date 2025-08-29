@@ -1,0 +1,405 @@
+# =============================================================================
+# ENVIRONMENT VALIDATION ACTION
+# =============================================================================
+# This action validates all required environment variables, secrets, and 
+# configurations for CI/CD pipelines. It's designed to fail fast if there are
+# any authentication or configuration issues, saving time and providing clear
+# error messages.
+#
+# USAGE:
+#   - uses: ./.github/actions/validate-environment
+#   - with:
+#       project-type: 'hybrid'        # maven, npm, or hybrid
+#       require-github-token: true    # Whether GitHub token is required
+#       require-gpg: true            # Whether GPG signing is required
+#       require-maven: true          # Whether Maven Central publishing is required
+#       require-npm: true            # Whether NPM publishing is required
+#
+# VALIDATION STEPS:
+#   1. GitHub Token - Validates GitHub API access and permissions
+#   2. GPG Configuration - Tests GPG key import and signing capability
+#   3. Maven Central - Validates Maven Central credentials and connectivity
+#   4. NPM Configuration - Tests NPM authentication and registry access
+#   5. Repository Access - Verifies repository access and permissions
+#   6. Git Configuration - Sets up Git identity and repository validation
+#   7. Build Tools - Checks availability of Java, Maven, Node.js, NPM
+#   8. Project Files - Validates presence of required project files
+# =============================================================================
+
+name: 'Validate Environment & Secrets'
+description: 'Validates all required environment variables, secrets, and configurations for CI/CD pipeline'
+
+inputs:
+  project-type:
+    description: 'Type of project (maven, npm, or hybrid)'
+    required: true
+    default: 'hybrid'
+  require-github-token:
+    description: 'Whether GitHub token is required for this workflow'
+    required: false
+    default: 'true'
+  require-gpg:
+    description: 'Whether GPG signing is required'
+    required: false
+    default: 'true'
+  require-maven:
+    description: 'Whether Maven Central publishing is required'
+    required: false
+    default: 'true'
+  require-npm:
+    description: 'Whether NPM publishing is required'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    # ========================================================================
+    # STEP 1: VALIDATION STARTED
+    # ========================================================================
+    # Displays comprehensive information about what will be validated
+    # based on the project type and requirements specified
+    - name: '🔍 Environment Validation Started'
+      run: |
+        echo "=========================================="
+        echo "🔍 ENVIRONMENT VALIDATION STARTED"
+        echo "=========================================="
+        echo "Project Type: ${{ inputs.project-type }}"
+        echo "GitHub Token Required: ${{ inputs.require-github-token }}"
+        echo "GPG Required: ${{ inputs.require-gpg }}"
+        echo "Maven Required: ${{ inputs.require-maven }}"
+        echo "NPM Required: ${{ inputs.require-npm }}"
+        echo "=========================================="
+      shell: bash
+
+    # ========================================================================
+    # STEP 2: GITHUB TOKEN VALIDATION
+    # ========================================================================
+    # Validates the GitHub token by:
+    # - Checking if GITHUB_TOKEN is set
+    # - Testing API access to GitHub
+    # - Displaying user information and permissions
+    # This step is critical for repository access and API operations
+    - name: '✅ Check GitHub Token'
+      if: inputs.require-github-token == 'true'
+      run: |
+        # Check if GitHub token is present
+        if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+          echo "❌ ERROR: GITHUB_TOKEN is not set"
+          exit 1
+        fi
+        
+        # Test GitHub API access by calling the user endpoint
+        echo "🔑 Testing GitHub API access..."
+        response=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/user" 2>/dev/null || echo "FAILED")
+        
+        # Validate the response and check for authentication errors
+        if [[ "$response" == "FAILED" ]] || [[ "$response" == *"Bad credentials"* ]]; then
+          echo "❌ ERROR: GitHub token is invalid or expired"
+          exit 1
+        fi
+        
+        # Display successful authentication information
+        echo "✅ GitHub token is valid and working"
+        echo "   User: $(echo "$response" | jq -r '.login // "unknown"')"
+        echo "   Permissions: $(echo "$response" | jq -r '.permissions // "unknown"')"
+      shell: bash
+
+    # ========================================================================
+    # STEP 3: GPG CONFIGURATION VALIDATION
+    # ========================================================================
+    # Sets up and validates GPG signing capability by:
+    # - Checking all required GPG secrets are present
+    # - Importing the GPG private key
+    # - Testing actual signing functionality
+    # This ensures artifacts can be properly signed for security
+    - name: '✅ Check GPG Configuration'
+      if: inputs.require-gpg == 'true'
+      run: |
+        echo "🔐 Validating GPG configuration..."
+        
+        # Validate all required GPG secrets are present
+        if [ -z "${{ secrets.GPG_PRIVATE_KEY_B64 }}" ]; then
+          echo "❌ ERROR: GPG_PRIVATE_KEY_B64 is not set"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.GPG_KEYNAME }}" ]; then
+          echo "❌ ERROR: GPG_KEYNAME is not set"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.GPG_PASSPHRASE }}" ]; then
+          echo "❌ ERROR: GPG_PASSPHRASE is not set"
+          exit 1
+        fi
+        
+        echo "✅ GPG secrets are present"
+        echo "   Key Name: ${{ secrets.GPG_KEYNAME }}"
+        echo "   Private Key: [PRESENT]"
+        echo "   Passphrase: [PRESENT]"
+        
+        # Set up GPG environment for CI/CD
+        echo "🔐 Testing GPG functionality..."
+        mkdir -p ~/.gnupg
+        echo 'pinentry-mode loopback' > ~/.gnupg/gpg.conf
+        chmod 600 ~/.gnupg/gpg.conf
+        
+        # Import the base64-encoded private key
+        echo "${{ secrets.GPG_PRIVATE_KEY_B64 }}" | tr -d ' \r\n\t' | base64 -d | gpg --batch --import
+        
+        # Test actual signing capability with a simple test message
+        echo "test" | gpg --batch --sign --armor --local-user "${{ secrets.GPG_KEYNAME }}" --passphrase "${{ secrets.GPG_PASSPHRASE }}" > /dev/null
+        
+        # Verify signing was successful
+        if [ $? -eq 0 ]; then
+          echo "✅ GPG signing is working correctly"
+        else
+          echo "❌ ERROR: GPG signing test failed"
+          exit 1
+        fi
+      shell: bash
+
+    # ========================================================================
+    # STEP 4: MAVEN CENTRAL CONFIGURATION VALIDATION
+    # ========================================================================
+    # Validates Maven Central publishing configuration by:
+    # - Checking Maven Central credentials are present
+    # - Testing connectivity to Maven Central servers
+    # This ensures Maven artifacts can be published successfully
+    - name: '✅ Check Maven Central Configuration'
+      if: inputs.require-maven == 'true'
+      run: |
+        echo "📦 Validating Maven Central configuration..."
+        
+        # Check required Maven Central secrets
+        if [ -z "${{ secrets.CENTRAL_USERNAME }}" ]; then
+          echo "❌ ERROR: CENTRAL_USERNAME is not set"
+          exit 1
+        fi
+        
+        if [ -z "${{ secrets.CENTRAL_PASSWORD }}" ]; then
+          echo "❌ ERROR: CENTRAL_PASSWORD is not set"
+          exit 1
+        fi
+        
+        echo "✅ Maven Central secrets are present"
+        echo "   Username: ${{ secrets.CENTRAL_USERNAME }}"
+        echo "   Password: [PRESENT]"
+        
+        # Test connectivity to Maven Central (without authentication)
+        echo "🌐 Testing Maven Central connectivity..."
+        if curl -s --connect-timeout 10 "https://s01.oss.sonatype.org/" > /dev/null; then
+          echo "✅ Maven Central is reachable"
+        else
+          echo "⚠️  WARNING: Maven Central connectivity test failed (may be network issue)"
+        fi
+      shell: bash
+
+    # ========================================================================
+    # STEP 5: NPM CONFIGURATION VALIDATION
+    # ========================================================================
+    # Validates NPM publishing configuration by:
+    # - Checking NPM token is present
+    # - Testing NPM authentication with the registry
+    # This ensures NPM packages can be published successfully
+    - name: '✅ Check NPM Configuration'
+      if: inputs.require-npm == 'true'
+      run: |
+        echo "📦 Validating NPM configuration..."
+        
+        # Check required NPM token
+        if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
+          echo "❌ ERROR: NPM_TOKEN is not set"
+          exit 1
+        fi
+        
+        echo "✅ NPM token is present"
+        echo "   Token: [PRESENT]"
+        
+        # Test NPM authentication by creating .npmrc and running whoami
+        echo "🔑 Testing NPM authentication..."
+        echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+        
+        # Verify authentication by checking current user
+        npm whoami --registry https://registry.npmjs.org/ --userconfig ~/.npmrc
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ NPM authentication is working"
+        else
+          echo "❌ ERROR: NPM authentication failed"
+          exit 1
+        fi
+      shell: bash
+
+    # ========================================================================
+    # STEP 6: REPOSITORY ACCESS VALIDATION
+    # ========================================================================
+    # Validates repository access and permissions by:
+    # - Testing access to the current repository
+    # - Displaying repository information
+    # This ensures the workflow has proper access to the repository
+    - name: '✅ Check Repository Access'
+      run: |
+        echo "🔐 Validating repository access..."
+        
+        # Check if we can access the repository using GitHub API
+        if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+          echo "⚠️  WARNING: Cannot test repository access without GITHUB_TOKEN"
+        else
+          echo "🌐 Testing repository access..."
+          response=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}" 2>/dev/null || echo "FAILED")
+          
+          # Validate repository access
+          if [[ "$response" == "FAILED" ]] || [[ "$response" == *"Not Found"* ]]; then
+            echo "❌ ERROR: Cannot access repository ${{ github.repository }}"
+            exit 1
+          fi
+          
+          echo "✅ Repository access confirmed"
+          echo "   Repository: ${{ github.repository }}"
+          echo "   Default Branch: $(echo "$response" | jq -r '.default_branch // "unknown"')"
+        fi
+      shell: bash
+
+    # ========================================================================
+    # STEP 7: GIT CONFIGURATION VALIDATION
+    # ========================================================================
+    # Sets up and validates Git configuration by:
+    # - Setting Git identity for CI/CD operations
+    # - Verifying we're in a Git repository
+    # - Displaying repository information
+    # This ensures Git operations (commits, tags, pushes) work correctly
+    - name: '✅ Check Git Configuration'
+      run: |
+        echo "🔧 Validating Git configuration..."
+        
+        # Set Git identity for CI/CD operations
+        git config --global user.email "ci@kingsrook.com"
+        git config --global user.name "GitHub Actions CI"
+        
+        echo "✅ Git configuration set"
+        echo "   Email: ci@kingsrook.com"
+        echo "   Name: GitHub Actions CI"
+        
+        # Verify we're in a Git repository
+        if [ -d ".git" ]; then
+          echo "✅ Git repository detected"
+          echo "   Current branch: $(git branch --show-current)"
+          echo "   Remote origin: $(git remote get-url origin)"
+        else
+          echo "❌ ERROR: Not in a Git repository"
+          exit 1
+        fi
+      shell: bash
+
+    # ========================================================================
+    # STEP 8: BUILD TOOLS VALIDATION
+    # ========================================================================
+    # Validates availability of required build tools by:
+    # - Checking Java and Maven availability (for Maven projects)
+    # - Checking Node.js and NPM availability (for NPM projects)
+    # - Displaying version information
+    # This ensures the build environment is properly configured
+    - name: '✅ Check Build Tools'
+      run: |
+        echo "🛠️  Validating build tools..."
+        
+        # Check Java/Maven availability for Maven projects
+        if [ "${{ inputs.require-maven }}" == "true" ]; then
+          if command -v java >/dev/null 2>&1; then
+            echo "✅ Java is available: $(java -version 2>&1 | head -n 1)"
+          else
+            echo "❌ ERROR: Java is not available"
+            exit 1
+          fi
+          
+          if command -v mvn >/dev/null 2>&1; then
+            echo "✅ Maven is available: $(mvn -version 2>&1 | head -n 1)"
+          else
+            echo "❌ ERROR: Maven is not available"
+            exit 1
+          fi
+        fi
+        
+        # Check Node.js/NPM availability for NPM projects
+        if [ "${{ inputs.require-npm }}" == "true" ]; then
+          if command -v node >/dev/null 2>&1; then
+            echo "✅ Node.js is available: $(node --version)"
+          else
+            echo "❌ ERROR: Node.js is not available"
+            exit 1
+          fi
+          
+          if command -v npm >/dev/null 2>&1; then
+            echo "✅ NPM is available: $(npm --version)"
+          else
+            echo "❌ ERROR: NPM is not available"
+            exit 1
+          fi
+        fi
+        
+        echo "✅ All required build tools are available"
+      shell: bash
+
+    # ========================================================================
+    # STEP 9: PROJECT FILES VALIDATION
+    # ========================================================================
+    # Validates presence of required project files by:
+    # - Checking pom.xml for Maven projects
+    # - Checking package.json for NPM projects
+    # - Providing warnings for recommended files
+    # This ensures the project structure is correct
+    - name: '✅ Check Project Files'
+      run: |
+        echo "📁 Validating project files..."
+        
+        # Check Maven project files
+        if [ "${{ inputs.require-maven }}" == "true" ]; then
+          if [ -f "pom.xml" ]; then
+            echo "✅ pom.xml found"
+          else
+            echo "❌ ERROR: pom.xml not found (required for Maven projects)"
+            exit 1
+          fi
+        fi
+        
+        # Check NPM project files
+        if [ "${{ inputs.require-npm }}" == "true" ]; then
+          if [ -f "package.json" ]; then
+            echo "✅ package.json found"
+          else
+            echo "❌ ERROR: package.json not found (required for NPM projects)"
+            exit 1
+          fi
+          
+          if [ -f "tsconfig.json" ]; then
+            echo "✅ tsconfig.json found"
+          else
+            echo "⚠️  WARNING: tsconfig.json not found (recommended for TypeScript projects)"
+          fi
+        fi
+        
+        echo "✅ Project files validation complete"
+      shell: bash
+
+    # ========================================================================
+    # STEP 10: VALIDATION COMPLETE
+    # ========================================================================
+    # Final step that confirms all validations passed
+    # Provides clear success message and next steps
+    - name: '🎉 Environment Validation Complete'
+      run: |
+        echo "=========================================="
+        echo "🎉 ENVIRONMENT VALIDATION COMPLETE"
+        echo "=========================================="
+        echo "✅ All required secrets and configurations are present"
+        echo "✅ All authentication tests passed"
+        echo "✅ All build tools are available"
+        echo "✅ Project files are valid"
+        echo "=========================================="
+        echo "🚀 Ready to proceed with CI/CD pipeline!"
+        echo "=========================================="
+      shell: bash

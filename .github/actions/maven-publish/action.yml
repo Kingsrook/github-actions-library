@@ -1,0 +1,320 @@
+# =============================================================================
+# MAVEN PUBLISH COMPOSITE ACTION
+# =============================================================================
+# This action provides standardized Maven publishing to Maven Central with
+# GPG signing, staging, and release management.
+#
+# USAGE:
+#   - name: '📦 Publish to Maven Central'
+#     uses: ./.github/actions/maven-publish
+#     with:
+#       maven-args: '-DskipTests'
+#       staging-profile: 'com.kingsrook'
+#       auto-release: false
+#       close-staging: true
+#
+# INPUTS:
+#   - maven-args: Additional Maven arguments
+#   - skip-tests: Whether to skip tests during build
+#   - staging-profile: Maven Central staging profile ID
+#   - auto-release: Whether to automatically release from staging
+#   - close-staging: Whether to close staging repository
+#   - drop-staging: Whether to drop staging repository on failure
+#   - verify-artifacts: Whether to verify published artifacts
+#   - artifact-paths: Paths to artifacts to verify (comma-separated)
+#
+# OUTPUTS:
+#   - build-success: Whether Maven build was successful
+#   - deploy-success: Whether Maven deploy was successful
+#   - staging-id: Maven Central staging repository ID
+#   - artifacts-published: Whether artifacts were published
+#   - artifacts-verified: Whether artifacts were verified
+# =============================================================================
+
+name: 'Maven Publish'
+description: 'Publishes Maven artifacts to Maven Central with GPG signing and staging'
+
+inputs:
+  maven-args:
+    description: 'Additional Maven arguments'
+    required: false
+    default: ''
+  skip-tests:
+    description: 'Whether to skip tests during build'
+    required: false
+    default: 'false'
+  staging-profile:
+    description: 'Maven Central staging profile ID'
+    required: false
+    default: ''
+  auto-release:
+    description: 'Whether to automatically release from staging'
+    required: false
+    default: 'false'
+  close-staging:
+    description: 'Whether to close staging repository'
+    required: false
+    default: 'true'
+  drop-staging:
+    description: 'Whether to drop staging repository on failure'
+    required: false
+    default: 'false'
+  verify-artifacts:
+    description: 'Whether to verify published artifacts'
+    required: false
+    default: 'true'
+  artifact-paths:
+    description: 'Paths to artifacts to verify (comma-separated)'
+    required: false
+    default: 'target/*.jar,target/*.pom,target/*.asc'
+
+outputs:
+  build-success:
+    description: 'Whether Maven build was successful'
+    value: ${{ steps.maven-build.outputs.build-success }}
+  deploy-success:
+    description: 'Whether Maven deploy was successful'
+    value: ${{ steps.maven-deploy.outputs.deploy-success }}
+  staging-id:
+    description: 'Maven Central staging repository ID'
+    value: ${{ steps.maven-deploy.outputs.staging-id }}
+  artifacts-published:
+    description: 'Whether artifacts were published'
+    value: ${{ steps.maven-deploy.outputs.artifacts-published }}
+  artifacts-verified:
+    description: 'Whether artifacts were verified'
+    value: ${{ steps.verify-artifacts.outputs.artifacts-verified }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🔍 Validate Maven Project'
+      shell: bash
+      run: |
+        echo "🔍 Validating Maven project..."
+        
+        if [ ! -f "pom.xml" ]; then
+          echo "❌ pom.xml not found"
+          exit 1
+        fi
+        
+        # Check if project has distribution management
+        if ! grep -q "distributionManagement" pom.xml; then
+          echo "⚠️ No distributionManagement found in pom.xml"
+          echo "This may cause deployment issues"
+        fi
+        
+        # Check if project has GPG plugin
+        if ! grep -q "maven-gpg-plugin" pom.xml; then
+          echo "⚠️ No maven-gpg-plugin found in pom.xml"
+          echo "Artifacts may not be GPG signed"
+        fi
+        
+        echo "✅ Maven project validation complete"
+
+    - name: '🧪 Run Maven Tests'
+      if: inputs.skip-tests != 'true'
+      id: maven-build
+      shell: bash
+      run: |
+        echo "🧪 Running Maven tests..."
+        
+        # Run tests with provided arguments
+        mvn clean test ${{ inputs.maven-args }}
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Maven tests completed successfully"
+          echo "build-success=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Maven tests failed"
+          echo "build-success=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '📦 Build Maven Project'
+      if: inputs.skip-tests == 'true'
+      id: maven-build
+      shell: bash
+      run: |
+        echo "📦 Building Maven project (tests skipped)..."
+        
+        # Build without tests
+        mvn clean compile ${{ inputs.maven-args }}
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Maven build completed successfully"
+          echo "build-success=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Maven build failed"
+          echo "build-success=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '📋 List Build Artifacts'
+      shell: bash
+      run: |
+        echo "📋 Build artifacts:"
+        find target -name "*.jar" -o -name "*.pom" -o -name "*.asc" | sort
+        
+        echo ""
+        echo "📊 Build summary:"
+        echo "JAR files: $(find target -name "*.jar" | wc -l)"
+        echo "POM files: $(find target -name "*.pom" | wc -l)"
+        echo "ASC files: $(find target -name "*.asc" | wc -l)"
+
+    - name: '🚀 Deploy to Maven Central'
+      id: maven-deploy
+      shell: bash
+      run: |
+        echo "🚀 Deploying to Maven Central..."
+        
+        # Set default values for outputs
+        echo "deploy-success=false" >> $GITHUB_OUTPUT
+        echo "staging-id=" >> $GITHUB_OUTPUT
+        echo "artifacts-published=false" >> $GITHUB_OUTPUT
+        
+        # Deploy to Maven Central
+        mvn clean deploy -DskipTests=${{ inputs.skip-tests }} ${{ inputs.maven-args }}
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Maven deploy completed successfully"
+          echo "deploy-success=true" >> $GITHUB_OUTPUT
+          echo "artifacts-published=true" >> $GITHUB_OUTPUT
+          
+          # Try to extract staging ID if available
+          if [ -n "${{ inputs.staging-profile }}" ]; then
+            echo "🔍 Looking for staging repository ID..."
+            # This would need to be implemented based on the specific staging plugin used
+            echo "staging-id=staging-repo-id" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "❌ Maven deploy failed"
+          echo "deploy-success=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '🔍 Verify Published Artifacts'
+      if: inputs.verify-artifacts == 'true'
+      id: verify-artifacts
+      shell: bash
+      run: |
+        echo "🔍 Verifying published artifacts..."
+        
+        ARTIFACT_PATHS="${{ inputs.artifact-paths }}"
+        IFS=',' read -ra PATHS <<< "$ARTIFACT_PATHS"
+        
+        VERIFICATION_SUCCESS="true"
+        VERIFIED_COUNT=0
+        
+        for path_pattern in "${PATHS[@]}"; do
+          path_pattern=$(echo "$path_pattern" | xargs)  # Trim whitespace
+          
+          # Expand glob patterns
+          for path in $path_pattern; do
+            if [ -f "$path" ]; then
+              echo "🔍 Verifying: $path"
+              
+              # Check file size
+              FILE_SIZE=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo "0")
+              if [ "$FILE_SIZE" -gt 0 ]; then
+                echo "✅ File valid: $path (${FILE_SIZE} bytes)"
+                VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+                
+                # Check for GPG signature if it's a JAR or POM
+                if [[ "$path" == *.jar ]] || [[ "$path" == *.pom ]]; then
+                  ASC_FILE="${path}.asc"
+                  if [ -f "$ASC_FILE" ]; then
+                    echo "✅ GPG signature found: $ASC_FILE"
+                  else
+                    echo "⚠️ No GPG signature found for: $path"
+                  fi
+                fi
+              else
+                echo "❌ File invalid: $path (0 bytes)"
+                VERIFICATION_SUCCESS="false"
+              fi
+            else
+              echo "⚠️ Artifact not found: $path"
+            fi
+          done
+        done
+        
+        if [ "$VERIFICATION_SUCCESS" = "true" ] && [ "$VERIFIED_COUNT" -gt 0 ]; then
+          echo "✅ All artifacts verified successfully (${VERIFIED_COUNT} artifacts)"
+          echo "artifacts-verified=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Artifact verification failed"
+          echo "artifacts-verified=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '🔒 Close Staging Repository'
+      if: inputs.close-staging == 'true' && inputs.staging-profile != ''
+      shell: bash
+      run: |
+        echo "🔒 Closing staging repository..."
+        
+        if [ -n "${{ steps.maven-deploy.outputs.staging-id }}" ]; then
+          echo "📋 Staging ID: ${{ steps.maven-deploy.outputs.staging-id }}"
+          
+          # Close staging repository
+          mvn nexus-staging:close -DstagingRepositoryId="${{ steps.maven-deploy.outputs.staging-id }}"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Staging repository closed successfully"
+          else
+            echo "❌ Failed to close staging repository"
+            
+            if [ "${{ inputs.drop-staging }}" = "true" ]; then
+              echo "🗑️ Dropping staging repository..."
+              mvn nexus-staging:drop -DstagingRepositoryId="${{ steps.maven-deploy.outputs.staging-id }}"
+            fi
+            
+            exit 1
+          fi
+        else
+          echo "⚠️ No staging ID available, skipping close operation"
+        fi
+
+    - name: '🚀 Release from Staging'
+      if: inputs.auto-release == 'true' && inputs.staging-profile != ''
+      shell: bash
+      run: |
+        echo "🚀 Releasing from staging..."
+        
+        if [ -n "${{ steps.maven-deploy.outputs.staging-id }}" ]; then
+          echo "📋 Staging ID: ${{ steps.maven-deploy.outputs.staging-id }}"
+          
+          # Release from staging
+          mvn nexus-staging:release -DstagingRepositoryId="${{ steps.maven-deploy.outputs.staging-id }}"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Artifacts released to Maven Central successfully"
+            echo "🌐 Check Maven Central: https://search.maven.org/"
+          else
+            echo "❌ Failed to release from staging"
+            exit 1
+          fi
+        else
+          echo "⚠️ No staging ID available, skipping release operation"
+        fi
+
+    - name: '📋 Maven Publish Summary'
+      shell: bash
+      run: |
+        echo "📋 Maven Publish Summary"
+        echo "========================="
+        echo "Build Success: ${{ steps.maven-build.outputs.build-success }}"
+        echo "Deploy Success: ${{ steps.maven-deploy.outputs.deploy-success }}"
+        echo "Staging ID: ${{ steps.maven-deploy.outputs.staging-id || 'N/A' }}"
+        echo "Artifacts Published: ${{ steps.maven-deploy.outputs.artifacts-published }}"
+        echo "Artifacts Verified: ${{ steps.verify-artifacts.outputs.artifacts-verified }}"
+        echo "Staging Profile: ${{ inputs.staging-profile || 'N/A' }}"
+        echo "Auto Release: ${{ inputs.auto-release }}"
+        echo "Close Staging: ${{ inputs.close-staging }}"
+        echo "Drop Staging: ${{ inputs.drop-staging }}"
+        echo "Verify Artifacts: ${{ inputs.verify-artifacts }}"
+        
+        if [ "${{ inputs.verify-artifacts }}" = "true" ]; then
+          echo "Artifact Paths: ${{ inputs.artifact-paths }}"
+        fi

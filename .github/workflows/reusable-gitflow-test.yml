@@ -1,0 +1,215 @@
+# =============================================================================
+# REUSABLE GITFLOW TEST WORKFLOW
+# =============================================================================
+# This workflow provides standardized testing for feature branches and PRs
+# across all QQQ repositories. It implements the DRY principle by centralizing
+# all testing logic in one reusable workflow.
+#
+# USAGE:
+#   - uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
+#   - with:
+#       project-type: 'hybrid'        # maven, npm, or hybrid
+#       java-version: '17'           # Java version for Maven projects
+#       node-version: '18'           # Node.js version for NPM projects
+#       maven-args: ''               # Additional Maven arguments
+#       npm-args: ''                 # Additional NPM arguments
+#
+# WORKFLOW STEPS:
+#   1. Environment Validation - Validates all required secrets and configurations
+#   2. Matrix Testing - Runs tests for Maven and/or NPM projects based on type
+#   3. Test Execution - Runs tests, linting, and coverage for each project type
+#   4. Artifact Collection - Uploads test results and coverage reports
+#
+# BRANCH TRIGGERS:
+#   - develop, main, release/*, hotfix/*, feature/* branches
+#   - Pull requests to develop and main
+# =============================================================================
+
+name: 'Reusable GitFlow Test Workflow'
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Type of project (maven, npm, or hybrid)'
+        required: true
+        type: string
+        default: 'hybrid'
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '18'
+      maven-args:
+        description: 'Additional Maven arguments'
+        required: false
+        type: string
+        default: ''
+      npm-args:
+        description: 'Additional NPM arguments'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+      GPG_PRIVATE_KEY_B64:
+        required: false
+      GPG_KEYNAME:
+        required: false
+      GPG_PASSPHRASE:
+        required: false
+      CENTRAL_USERNAME:
+        required: false
+      CENTRAL_PASSWORD:
+        required: false
+      NPM_TOKEN:
+        required: false
+
+jobs:
+  # ========================================================================
+  # JOB 1: ENVIRONMENT VALIDATION
+  # ========================================================================
+  # This job runs first and validates all required environment variables,
+  # secrets, and configurations. It's designed to fail fast if there are
+  # any authentication or configuration issues.
+  validate-environment:
+    name: '🔍 Validate Environment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Validate Environment & Secrets'
+        uses: ./.github/actions/validate-environment
+        with:
+          project-type: ${{ inputs.project-type }}
+          require-github-token: true
+          require-gpg: false
+          require-maven: ${{ contains(inputs.project-type, 'maven') }}
+          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+
+  # ========================================================================
+  # JOB 2: MATRIX TESTING
+  # ========================================================================
+  # This job runs tests for each project type (Maven and/or NPM) using
+  # GitHub Actions matrix strategy. It only runs for project types that
+  # are actually required based on the project-type input.
+  test:
+    name: '🧪 Test'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    strategy:
+      matrix:
+        # Always include both project types in the matrix
+        project: [maven, npm]
+        exclude:
+          # Exclude Maven if not required for this project type
+          - project: maven
+            when: ${{ !contains(inputs.project-type, 'maven') }}
+          # Exclude NPM if not required for this project type
+          - project: npm
+            when: ${{ !contains(inputs.project-type, 'npm') }}
+    steps:
+      # ====================================================================
+      # STEP 1: CHECKOUT CODE
+      # ====================================================================
+      # Checkout the repository code for testing
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+
+      # ====================================================================
+      # STEP 2: SETUP JAVA (MAVEN PROJECTS)
+      # ====================================================================
+      # Setup Java environment for Maven projects
+      # - Installs specified Java version
+      # - Configures Maven with caching for performance
+      - name: 'Setup Java'
+        if: matrix.project == 'maven'
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # ====================================================================
+      # STEP 3: SETUP NODE.JS (NPM PROJECTS)
+      # ====================================================================
+      # Setup Node.js environment for NPM projects
+      # - Installs specified Node.js version
+      # - Configures NPM with caching for performance
+      - name: 'Setup Node.js'
+        if: matrix.project == 'npm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      # ====================================================================
+      # STEP 4: TEST MAVEN PROJECT
+      # ====================================================================
+      # Executes Maven testing lifecycle
+      # - Runs 'mvn clean test' with specified arguments
+      # - Generates test reports and coverage
+      # - Fails fast if any tests fail
+      - name: 'Test Maven Project'
+        if: matrix.project == 'maven'
+        run: |
+          echo "🧪 Testing Maven project..."
+          mvn clean test -B ${{ inputs.maven-args }}
+          echo "✅ Maven tests completed"
+
+      # ====================================================================
+      # STEP 5: TEST NPM PROJECT
+      # ====================================================================
+      # Executes NPM testing workflow
+      # - Installs dependencies with 'npm ci'
+      # - Runs linting with 'npm run lint'
+      # - Executes tests with 'npm test'
+      # - Generates coverage reports
+      - name: 'Test NPM Project'
+        if: matrix.project == 'npm'
+        run: |
+          echo "🧪 Testing NPM project..."
+          npm ci
+          npm run lint
+          npm test
+          echo "✅ NPM tests completed"
+
+      # ====================================================================
+      # STEP 6: UPLOAD MAVEN TEST RESULTS
+      # ====================================================================
+      # Uploads Maven test results as artifacts
+      # - Collects Surefire test reports
+      # - Stores as CircleCI artifacts for analysis
+      # - Continues even if no reports found (warn mode)
+      - name: 'Upload Test Results'
+        if: matrix.project == 'maven'
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-test-results
+          path: target/surefire-reports/
+          if-no-files-found: warn
+
+      # ====================================================================
+      # STEP 7: UPLOAD NPM COVERAGE REPORTS
+      # ====================================================================
+      # Uploads NPM coverage reports as artifacts
+      # - Collects coverage reports from Jest
+      # - Stores as CircleCI artifacts for analysis
+      # - Continues even if no reports found (warn mode)
+      - name: 'Upload Coverage Reports'
+        if: matrix.project == 'npm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-coverage-reports
+          path: coverage/
+          if-no-files-found: warn

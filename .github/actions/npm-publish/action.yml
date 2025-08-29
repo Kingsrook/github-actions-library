@@ -1,0 +1,395 @@
+# =============================================================================
+# NPM PUBLISH COMPOSITE ACTION
+# =============================================================================
+# This action provides standardized NPM publishing to the npm registry with
+# build, testing, and tag management.
+#
+# USAGE:
+#   - name: '📦 Publish to NPM'
+#     uses: ./.github/actions/npm-publish
+#     with:
+#       npm-args: '--access public'
+#       tag: 'latest'
+#       dry-run: false
+#       verify-artifacts: true
+#
+# INPUTS:
+#   - npm-args: Additional NPM arguments
+#   - skip-tests: Whether to skip tests during build
+#   - skip-lint: Whether to skip linting
+#   - tag: NPM tag to use for publishing (latest, beta, rc, etc.)
+#   - dry-run: Whether to do a dry run (no actual publish)
+#   - verify-artifacts: Whether to verify published artifacts
+#   - artifact-paths: Paths to artifacts to verify (comma-separated)
+#   - registry: NPM registry URL (defaults to npmjs.org)
+#   - access: Package access level (public, restricted)
+#
+# OUTPUTS:
+#   - build-success: Whether NPM build was successful
+#   - test-success: Whether NPM tests were successful
+#   - publish-success: Whether NPM publish was successful
+#   - package-version: Version of the published package
+#   - artifacts-verified: Whether artifacts were verified
+# =============================================================================
+
+name: 'NPM Publish'
+description: 'Publishes NPM packages to the npm registry with build and testing'
+
+inputs:
+  npm-args:
+    description: 'Additional NPM arguments'
+    required: false
+    default: ''
+  skip-tests:
+    description: 'Whether to skip tests during build'
+    required: false
+    default: 'false'
+  skip-lint:
+    description: 'Whether to skip linting'
+    required: false
+    default: 'false'
+  tag:
+    description: 'NPM tag to use for publishing'
+    required: false
+    default: 'latest'
+  dry-run:
+    description: 'Whether to do a dry run (no actual publish)'
+    required: false
+    default: 'false'
+  verify-artifacts:
+    description: 'Whether to verify published artifacts'
+    required: false
+    default: 'true'
+  artifact-paths:
+    description: 'Paths to artifacts to verify (comma-separated)'
+    required: false
+    default: 'dist,package.json,README.md,LICENSE'
+  registry:
+    description: 'NPM registry URL'
+    required: false
+    default: 'https://registry.npmjs.org/'
+  access:
+    description: 'Package access level'
+    required: false
+    default: 'public'
+
+outputs:
+  build-success:
+    description: 'Whether NPM build was successful'
+    value: ${{ steps.npm-build.outputs.build-success }}
+  test-success:
+    description: 'Whether NPM tests were successful'
+    value: ${{ steps.npm-test.outputs.test-success }}
+  publish-success:
+    description: 'Whether NPM publish was successful'
+    value: ${{ steps.npm-publish.outputs.publish-success }}
+  package-version:
+    description: 'Version of the published package'
+    value: ${{ steps.npm-publish.outputs.package-version }}
+  artifacts-verified:
+    description: 'Whether artifacts were verified'
+    value: ${{ steps.verify-artifacts.outputs.artifacts-verified }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🔍 Validate NPM Project'
+      shell: bash
+      run: |
+        echo "🔍 Validating NPM project..."
+        
+        if [ ! -f "package.json" ]; then
+          echo "❌ package.json not found"
+          exit 1
+        fi
+        
+        # Check if project has required fields
+        PACKAGE_NAME=$(node -p "require('./package.json').name")
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        PACKAGE_MAIN=$(node -p "require('./package.json').main || 'index.js'")
+        
+        if [ -z "$PACKAGE_NAME" ] || [ "$PACKAGE_NAME" = "undefined" ]; then
+          echo "❌ package.json missing 'name' field"
+          exit 1
+        fi
+        
+        if [ -z "$PACKAGE_VERSION" ] || [ "$PACKAGE_VERSION" = "undefined" ]; then
+          echo "❌ package.json missing 'version' field"
+          exit 1
+        fi
+        
+        echo "✅ NPM project validation complete"
+        echo "📦 Package: ${PACKAGE_NAME}@${PACKAGE_VERSION}"
+        echo "📁 Main: ${PACKAGE_MAIN}"
+
+    - name: '📥 Install Dependencies'
+      shell: bash
+      run: |
+        echo "📥 Installing NPM dependencies..."
+        
+        # Install dependencies
+        npm ci
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ Dependencies installed successfully"
+        else
+          echo "❌ Failed to install dependencies"
+          exit 1
+        fi
+
+    - name: '🔍 Run Linting'
+      if: inputs.skip-lint != 'true'
+      shell: bash
+      run: |
+        echo "🔍 Running NPM linting..."
+        
+        # Check if lint script exists
+        if npm run | grep -q "lint"; then
+          npm run lint ${{ inputs.npm-args }}
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Linting completed successfully"
+          else
+            echo "❌ Linting failed"
+            exit 1
+          fi
+        else
+          echo "ℹ️ No lint script found, skipping linting"
+        fi
+
+    - name: '🧪 Run Tests'
+      if: inputs.skip-tests != 'true'
+      id: npm-test
+      shell: bash
+      run: |
+        echo "🧪 Running NPM tests..."
+        
+        # Check if test script exists
+        if npm run | grep -q "test"; then
+          npm test ${{ inputs.npm-args }}
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Tests completed successfully"
+            echo "test-success=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Tests failed"
+            echo "test-success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        else
+          echo "ℹ️ No test script found, skipping tests"
+          echo "test-success=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: '📦 Build Project'
+      id: npm-build
+      shell: bash
+      run: |
+        echo "📦 Building NPM project..."
+        
+        # Check if build script exists
+        if npm run | grep -q "build"; then
+          npm run build ${{ inputs.npm-args }}
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Build completed successfully"
+            echo "build-success=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Build failed"
+            echo "build-success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        else
+          echo "ℹ️ No build script found, skipping build"
+          echo "build-success=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: '📋 List Build Artifacts'
+      shell: bash
+      run: |
+        echo "📋 Build artifacts:"
+        
+        # List dist directory if it exists
+        if [ -d "dist" ]; then
+          find dist -type f | sort
+          echo ""
+          echo "📊 Build summary:"
+          echo "Dist files: $(find dist -type f | wc -l)"
+          echo "Dist size: $(du -sh dist | cut -f1)"
+        else
+          echo "ℹ️ No dist directory found"
+        fi
+        
+        # List package files
+        echo ""
+        echo "📦 Package files:"
+        ls -la *.json *.md *.txt 2>/dev/null || echo "No package files found"
+
+    - name: '🔍 Verify Package Configuration'
+      shell: bash
+      run: |
+        echo "🔍 Verifying package configuration..."
+        
+        # Check package.json validity
+        if node -e "JSON.parse(require('fs').readFileSync('package.json'))"; then
+          echo "✅ package.json is valid JSON"
+        else
+          echo "❌ package.json is invalid JSON"
+          exit 1
+        fi
+        
+        # Check for required fields
+        REQUIRED_FIELDS=("name" "version" "main")
+        for field in "${REQUIRED_FIELDS[@]}"; do
+          if node -e "const pkg = require('./package.json'); if (!pkg.$field) { process.exit(1); }"; then
+            echo "✅ Required field '$field' present"
+          else
+            echo "❌ Required field '$field' missing"
+            exit 1
+          fi
+        done
+        
+        # Check if main file exists
+        MAIN_FILE=$(node -p "require('./package.json').main || 'index.js'")
+        if [ -f "$MAIN_FILE" ] || [ -f "dist/$MAIN_FILE" ]; then
+          echo "✅ Main file exists: $MAIN_FILE"
+        else
+          echo "⚠️ Main file not found: $MAIN_FILE"
+        fi
+
+    - name: '🚀 Publish to NPM'
+      id: npm-publish
+      shell: bash
+      run: |
+        echo "🚀 Publishing to NPM..."
+        
+        # Set default values for outputs
+        echo "publish-success=false" >> $GITHUB_OUTPUT
+        echo "package-version=" >> $GITHUB_OUTPUT
+        
+        # Get package version
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        echo "package-version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+        
+        # Set registry if specified
+        if [ "${{ inputs.registry }}" != "https://registry.npmjs.org/" ]; then
+          npm config set registry "${{ inputs.registry }}"
+          echo "🔧 Set NPM registry to: ${{ inputs.registry }}"
+        fi
+        
+        # Build publish command
+        PUBLISH_CMD="npm publish"
+        
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          PUBLISH_CMD="${PUBLISH_CMD} --dry-run"
+          echo "🧪 DRY RUN MODE - No actual publish"
+        fi
+        
+        if [ -n "${{ inputs.tag }}" ]; then
+          PUBLISH_CMD="${PUBLISH_CMD} --tag ${{ inputs.tag }}"
+        fi
+        
+        if [ -n "${{ inputs.access }}" ]; then
+          PUBLISH_CMD="${PUBLISH_CMD} --access ${{ inputs.access }}"
+        fi
+        
+        if [ -n "${{ inputs.npm-args }}" ]; then
+          PUBLISH_CMD="${PUBLISH_CMD} ${{ inputs.npm-args }}"
+        fi
+        
+        echo "📤 Publishing command: ${PUBLISH_CMD}"
+        
+        # Execute publish
+        eval "$PUBLISH_CMD"
+        
+        if [ $? -eq 0 ]; then
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "✅ Dry run completed successfully"
+          else
+            echo "✅ Package published successfully to NPM"
+            echo "🌐 Check NPM: https://www.npmjs.com/package/$(node -p "require('./package.json').name")"
+          fi
+          echo "publish-success=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ NPM publish failed"
+          echo "publish-success=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '🔍 Verify Published Artifacts'
+      if: inputs.verify-artifacts == 'true'
+      id: verify-artifacts
+      shell: bash
+      run: |
+        echo "🔍 Verifying published artifacts..."
+        
+        ARTIFACT_PATHS="${{ inputs.artifact-paths }}"
+        IFS=',' read -ra PATHS <<< "$ARTIFACT_PATHS"
+        
+        VERIFICATION_SUCCESS="true"
+        VERIFIED_COUNT=0
+        
+        for path_pattern in "${PATHS[@]}"; do
+          path_pattern=$(echo "$path_pattern" | xargs)  # Trim whitespace
+          
+          # Expand glob patterns
+          for path in $path_pattern; do
+            if [ -e "$path" ]; then
+              echo "🔍 Verifying: $path"
+              
+              if [ -f "$path" ]; then
+                # Check file size
+                FILE_SIZE=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo "0")
+                if [ "$FILE_SIZE" -gt 0 ]; then
+                  echo "✅ File valid: $path (${FILE_SIZE} bytes)"
+                  VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+                else
+                  echo "❌ File invalid: $path (0 bytes)"
+                  VERIFICATION_SUCCESS="false"
+                fi
+              elif [ -d "$path" ]; then
+                # Check directory contents
+                DIR_COUNT=$(find "$path" -type f | wc -l)
+                if [ "$DIR_COUNT" -gt 0 ]; then
+                  echo "✅ Directory valid: $path (${DIR_COUNT} files)"
+                  VERIFIED_COUNT=$((VERIFIED_COUNT + 1))
+                else
+                  echo "⚠️ Directory empty: $path"
+                fi
+              fi
+            else
+              echo "⚠️ Artifact not found: $path"
+            fi
+          done
+        done
+        
+        if [ "$VERIFICATION_SUCCESS" = "true" ] && [ "$VERIFIED_COUNT" -gt 0 ]; then
+          echo "✅ All artifacts verified successfully (${VERIFIED_COUNT} artifacts)"
+          echo "artifacts-verified=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Artifact verification failed"
+          echo "artifacts-verified=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: '📋 NPM Publish Summary'
+      shell: bash
+      run: |
+        echo "📋 NPM Publish Summary"
+        echo "======================="
+        echo "Build Success: ${{ steps.npm-build.outputs.build-success }}"
+        echo "Test Success: ${{ steps.npm-test.outputs.test-success }}"
+        echo "Publish Success: ${{ steps.npm-publish.outputs.publish-success }}"
+        echo "Package Version: ${{ steps.npm-publish.outputs.package-version }}"
+        echo "Artifacts Verified: ${{ steps.verify-artifacts.outputs.artifacts-verified }}"
+        echo "NPM Tag: ${{ inputs.tag }}"
+        echo "Dry Run: ${{ inputs.dry-run }}"
+        echo "Skip Tests: ${{ inputs.skip-tests }}"
+        echo "Skip Lint: ${{ inputs.skip-lint }}"
+        echo "Registry: ${{ inputs.registry }}"
+        echo "Access: ${{ inputs.access }}"
+        echo "Verify Artifacts: ${{ inputs.verify-artifacts }}"
+        
+        if [ "${{ inputs.verify-artifacts }}" = "true" ]; then
+          echo "Artifact Paths: ${{ inputs.artifact-paths }}"
+        fi

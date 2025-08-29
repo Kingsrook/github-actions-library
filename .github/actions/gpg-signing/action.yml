@@ -1,0 +1,252 @@
+# =============================================================================
+# GPG SIGNING COMPOSITE ACTION
+# =============================================================================
+# This action provides standardized GPG signing setup and verification for
+# Maven and NPM projects. It handles key import, configuration, and testing.
+#
+# USAGE:
+#   - name: '🔐 Setup GPG Signing'
+#     uses: ./.github/actions/gpg-signing
+#     with:
+#       gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
+#       gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+#       gpg-keyname: ${{ secrets.GPG_KEYNAME }}
+#       test-signing: true
+#
+# INPUTS:
+#   - gpg-private-key: Base64 encoded GPG private key
+#   - gpg-passphrase: GPG key passphrase
+#   - gpg-keyname: GPG key identifier/email
+#   - test-signing: Whether to test GPG signing functionality
+#   - verify-artifacts: Whether to verify signed artifacts
+#   - artifact-paths: Paths to artifacts to verify (comma-separated)
+#
+# OUTPUTS:
+#   - gpg-available: Whether GPG is available and configured
+#   - key-imported: Whether GPG key was successfully imported
+#   - signing-tested: Whether GPG signing was tested
+#   - artifacts-verified: Whether artifacts were verified
+# =============================================================================
+
+name: 'GPG Signing'
+description: 'Sets up and configures GPG signing for Maven and NPM projects'
+
+inputs:
+  gpg-private-key:
+    description: 'Base64 encoded GPG private key'
+    required: true
+  gpg-passphrase:
+    description: 'GPG key passphrase'
+    required: true
+  gpg-keyname:
+    description: 'GPG key identifier/email'
+    required: true
+  test-signing:
+    description: 'Whether to test GPG signing functionality'
+    required: false
+    default: 'true'
+  verify-artifacts:
+    description: 'Whether to verify signed artifacts'
+    required: false
+    default: 'false'
+  artifact-paths:
+    description: 'Paths to artifacts to verify (comma-separated)'
+    required: false
+    default: ''
+
+outputs:
+  gpg-available:
+    description: 'Whether GPG is available and configured'
+    value: ${{ steps.gpg-setup.outputs.gpg-available }}
+  key-imported:
+    description: 'Whether GPG key was successfully imported'
+    value: ${{ steps.gpg-setup.outputs.key-imported }}
+  signing-tested:
+    description: 'Whether GPG signing was tested'
+    value: ${{ steps.gpg-setup.outputs.signing-tested }}
+  artifacts-verified:
+    description: 'Whether artifacts were verified'
+    value: ${{ steps.gpg-setup.outputs.artifacts-verified }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🔍 Check GPG Availability'
+      id: gpg-setup
+      shell: bash
+      run: |
+        echo "🔍 Checking GPG availability..."
+        
+        GPG_AVAILABLE="false"
+        KEY_IMPORTED="false"
+        SIGNING_TESTED="false"
+        ARTIFACTS_VERIFIED="false"
+        
+        # Check if GPG is available
+        if command -v gpg >/dev/null 2>&1; then
+          GPG_VERSION=$(gpg --version | head -n1)
+          echo "✅ GPG available: ${GPG_VERSION}"
+          GPG_AVAILABLE="true"
+        else
+          echo "❌ GPG not available"
+          exit 1
+        fi
+        
+        # Set initial outputs
+        echo "gpg-available=${GPG_AVAILABLE}" >> $GITHUB_OUTPUT
+        echo "key-imported=${KEY_IMPORTED}" >> $GITHUB_OUTPUT
+        echo "signing-tested=${SIGNING_TESTED}" >> $GITHUB_OUTPUT
+        echo "artifacts-verified=${ARTIFACTS_VERIFIED}" >> $GITHUB_OUTPUT
+
+    - name: '🔐 Import GPG Private Key'
+      shell: bash
+      run: |
+        echo "🔐 Importing GPG private key..."
+        
+        # Import the private key
+        echo "${{ inputs.gpg-private-key }}" | base64 -d | gpg --batch --import
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ GPG private key imported successfully"
+          
+          # Update output
+          echo "key-imported=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Failed to import GPG private key"
+          exit 1
+        fi
+
+    - name: '🔑 Configure GPG Key'
+      shell: bash
+      run: |
+        echo "🔑 Configuring GPG key..."
+        
+        # List imported keys
+        echo "📋 Available GPG keys:"
+        gpg --list-secret-keys --keyid-format LONG
+        
+        # Configure GPG to use the imported key
+        echo "🔧 Configuring GPG for key: ${{ inputs.gpg-keyname }}"
+        
+        # Set GPG configuration
+        echo "use-agent" >> ~/.gnupg/gpg.conf
+        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+        
+        # Set passphrase for the key
+        echo "${{ inputs.gpg-passphrase }}" | gpg --batch --passphrase-fd 0 --edit-key "${{ inputs.gpg-keyname }}" trust quit
+        
+        echo "✅ GPG key configured successfully"
+
+    - name: '🧪 Test GPG Signing'
+      if: inputs.test-signing == 'true'
+      shell: bash
+      run: |
+        echo "🧪 Testing GPG signing functionality..."
+        
+        # Create a test file
+        echo "This is a test file for GPG signing verification." > test-gpg.txt
+        
+        # Sign the test file
+        echo "${{ inputs.gpg-passphrase }}" | gpg --batch --passphrase-fd 0 --sign test-gpg.txt
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ File signed successfully: test-gpg.txt.gpg"
+          
+          # Verify the signature
+          gpg --verify test-gpg.txt.gpg
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ GPG signature verified successfully"
+            
+            # Update output
+            echo "signing-tested=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ GPG signature verification failed"
+            exit 1
+          fi
+        else
+          echo "❌ GPG signing failed"
+          exit 1
+        fi
+        
+        # Clean up test files
+        rm -f test-gpg.txt test-gpg.txt.gpg
+
+    - name: '🔍 Verify Signed Artifacts'
+      if: inputs.verify-artifacts == 'true' && inputs.artifact-paths != ''
+      shell: bash
+      run: |
+        echo "🔍 Verifying signed artifacts..."
+        
+        ARTIFACT_PATHS="${{ inputs.artifact-paths }}"
+        IFS=',' read -ra PATHS <<< "$ARTIFACT_PATHS"
+        
+        VERIFICATION_SUCCESS="true"
+        
+        for path in "${PATHS[@]}"; do
+          path=$(echo "$path" | xargs)  # Trim whitespace
+          
+          if [ -f "$path" ]; then
+            echo "🔍 Verifying: $path"
+            
+            # Check if file has GPG signature
+            if [[ "$path" == *.asc ]] || [[ "$path" == *.sig ]]; then
+              # This is a signature file, verify it
+              gpg --verify "$path"
+              
+              if [ $? -eq 0 ]; then
+                echo "✅ Signature verified: $path"
+              else
+                echo "❌ Signature verification failed: $path"
+                VERIFICATION_SUCCESS="false"
+              fi
+            elif [[ "$path" == *.jar ]] || [[ "$path" == *.pom ]]; then
+              # Check for corresponding .asc file
+              ASC_FILE="${path}.asc"
+              if [ -f "$ASC_FILE" ]; then
+                echo "🔍 Verifying JAR/POM with signature: $ASC_FILE"
+                gpg --verify "$ASC_FILE" "$path"
+                
+                if [ $? -eq 0 ]; then
+                  echo "✅ JAR/POM verified: $path"
+                else
+                  echo "❌ JAR/POM verification failed: $path"
+                  VERIFICATION_SUCCESS="false"
+                fi
+              else
+                echo "⚠️ No signature file found for: $path"
+              fi
+            else
+              echo "ℹ️ Skipping verification for: $path (unsupported file type)"
+            fi
+          else
+            echo "⚠️ Artifact not found: $path"
+          fi
+        done
+        
+        if [ "$VERIFICATION_SUCCESS" = "true" ]; then
+          echo "✅ All artifacts verified successfully"
+          
+          # Update output
+          echo "artifacts-verified=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Some artifacts failed verification"
+          exit 1
+        fi
+
+    - name: '📋 GPG Setup Summary'
+      shell: bash
+      run: |
+        echo "📋 GPG Setup Summary"
+        echo "===================="
+        echo "GPG Available: ${{ steps.gpg-setup.outputs.gpg-available }}"
+        echo "Key Imported: ${{ steps.gpg-setup.outputs.key-imported }}"
+        echo "Signing Tested: ${{ steps.gpg-setup.outputs.signing-tested }}"
+        echo "Artifacts Verified: ${{ steps.gpg-setup.outputs.artifacts-verified }}"
+        echo "Key Name: ${{ inputs.gpg-keyname }}"
+        echo "Test Signing: ${{ inputs.test-signing }}"
+        echo "Verify Artifacts: ${{ inputs.verify-artifacts }}"
+        
+        if [ "${{ inputs.verify-artifacts }}" = "true" ]; then
+          echo "Artifact Paths: ${{ inputs.artifact-paths }}"
+        fi

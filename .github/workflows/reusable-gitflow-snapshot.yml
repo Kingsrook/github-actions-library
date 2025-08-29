@@ -1,0 +1,240 @@
+# =============================================================================
+# REUSABLE GITFLOW SNAPSHOT WORKFLOW
+# =============================================================================
+# This workflow provides standardized snapshot publishing for develop branches
+# across all QQQ repositories. It implements the DRY principle by centralizing
+# all snapshot publishing logic in one reusable workflow.
+#
+# USAGE:
+#   - uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-snapshot@main
+#   - with:
+#       project-type: 'hybrid'        # maven, npm, or hybrid
+#       java-version: '17'           # Java version for Maven projects
+#       node-version: '18'           # Node.js version for NPM projects
+#
+# WORKFLOW STEPS:
+#   1. Environment Validation - Validates all required secrets and configurations
+#   2. Build & Test - Compiles and tests all project types
+#   3. GPG Signing - Sets up GPG for artifact signing
+#   4. Snapshot Publishing - Publishes to Maven Central and NPM with snapshot tags
+#   5. Version Management - Commits and pushes version changes
+#
+# BRANCH TRIGGERS:
+#   - develop branch only
+#   - Publishes X.Y.Z-SNAPSHOT versions
+#   - Creates development snapshots for testing and integration
+# =============================================================================
+
+name: 'Reusable GitFlow Snapshot Workflow'
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Type of project (maven, npm, or hybrid)'
+        required: true
+        type: string
+        default: 'hybrid'
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '18'
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+      GPG_PRIVATE_KEY_B64:
+        required: true
+      GPG_KEYNAME:
+        required: true
+      GPG_PASSPHRASE:
+        required: true
+      CENTRAL_USERNAME:
+        required: true
+      CENTRAL_PASSWORD:
+        required: true
+      NPM_TOKEN:
+        required: true
+
+jobs:
+  # ========================================================================
+  # JOB 1: ENVIRONMENT VALIDATION
+  # ========================================================================
+  # This job runs first and validates all required environment variables,
+  # secrets, and configurations. For snapshot publishing, it validates:
+  # - GitHub token for repository access
+  # - GPG keys for artifact signing
+  # - Maven Central credentials for publishing
+  # - NPM token for package publishing
+  validate-environment:
+    name: '🔍 Validate Environment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Validate Environment & Secrets'
+        uses: ./.github/actions/validate-environment
+        with:
+          project-type: ${{ inputs.project-type }}
+          require-github-token: true
+          require-gpg: true
+          require-maven: ${{ contains(inputs.project-type, 'maven') }}
+          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+
+  # ========================================================================
+  # JOB 2: SNAPSHOT DEPLOYMENT
+  # ========================================================================
+  # This job handles the complete snapshot publishing process:
+  # - Builds and tests all project types
+  # - Sets up GPG signing for security
+  # - Publishes snapshots to Maven Central and NPM
+  # - Manages version changes and commits them back
+  deploy-snapshot:
+    name: '📦 Deploy Snapshot'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    environment: snapshot
+    steps:
+      # ====================================================================
+      # STEP 1: CHECKOUT CODE
+      # ====================================================================
+      # Checkout the repository code with full history for version management
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ====================================================================
+      # STEP 2: SETUP JAVA (MAVEN PROJECTS)
+      # ====================================================================
+      # Setup Java environment for Maven projects
+      # - Installs specified Java version
+      # - Configures Maven with caching for performance
+      - name: 'Setup Java'
+        if: contains(inputs.project-type, 'maven')
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # ====================================================================
+      # STEP 3: SETUP NODE.JS (NPM PROJECTS)
+      # ====================================================================
+      # Setup Node.js environment for NPM projects
+      # - Installs specified Node.js version
+      # - Configures NPM with caching for performance
+      - name: 'Setup Node.js'
+        if: contains(inputs.project-type, 'npm')
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      # ====================================================================
+      # STEP 4: SETUP GPG SIGNING
+      # ====================================================================
+      # Sets up GPG environment for artifact signing
+      # - Creates GPG configuration directory
+      # - Imports the private key from base64-encoded secret
+      # - Configures pinentry mode for CI/CD environment
+      - name: 'Setup GPG'
+        run: |
+          mkdir -p ~/.gnupg
+          echo 'pinentry-mode loopback' > ~/.gnupg/gpg.conf
+          chmod 600 ~/.gnupg/gpg.conf
+          echo "${{ secrets.GPG_PRIVATE_KEY_B64 }}" | tr -d ' \r\n\t' | base64 -d | gpg --batch --import
+
+      # ====================================================================
+      # STEP 5: BUILD AND TEST MAVEN PROJECT
+      # ====================================================================
+      # Builds and tests Maven projects with GPG signing
+      # - Runs 'mvn clean verify' with GPG signing enabled
+      # - Generates signed artifacts ready for publishing
+      # - Ensures all tests pass before publishing
+      - name: 'Build and Test Maven Project'
+        if: contains(inputs.project-type, 'maven')
+        run: |
+          echo "🏗️ Building Maven project..."
+          mvn clean verify -B -Dgpg.keyname=${{ secrets.GPG_KEYNAME }} -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }}
+          echo "✅ Maven build completed"
+
+      # ====================================================================
+      # STEP 6: BUILD AND TEST NPM PROJECT
+      # ====================================================================
+      # Builds and tests NPM projects
+      # - Installs dependencies with 'npm ci'
+      # - Runs linting and tests
+      # - Builds production-ready package
+      - name: 'Build and Test NPM Project'
+        if: contains(inputs.project-type, 'npm')
+        run: |
+          echo "🏗️ Building NPM project..."
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+          echo "✅ NPM build completed"
+
+      # ====================================================================
+      # STEP 7: PUBLISH MAVEN SNAPSHOT
+      # ====================================================================
+      # Publishes Maven snapshot to Maven Central
+      # - Uses 'mvn deploy' with GPG signing
+      # - Publishes to snapshots repository
+      # - Skips tests since they were run in previous step
+      - name: 'Publish Maven Snapshot'
+        if: contains(inputs.project-type, 'maven')
+        run: |
+          echo "📦 Publishing Maven snapshot..."
+          mvn deploy -B -Dgpg.keyname=${{ secrets.GPG_KEYNAME }} -Dgpg.passphrase=${{ secrets.GPG_PASSPHRASE }} -DskipTests
+          echo "✅ Maven snapshot published"
+
+      # ====================================================================
+      # STEP 8: PUBLISH NPM SNAPSHOT
+      # ====================================================================
+      # Publishes NPM snapshot to npmjs.org
+      # - Creates .npmrc with authentication token
+      # - Publishes with 'snapshot' tag for identification
+      # - Ensures public access for maximum visibility
+      - name: 'Publish NPM Snapshot'
+        if: contains(inputs.project-type, 'npm')
+        run: |
+          echo "📦 Publishing NPM snapshot..."
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          npm publish --access public --tag snapshot
+          echo "✅ NPM snapshot published"
+
+      # ====================================================================
+      # STEP 9: COMMIT VERSION CHANGES
+      # ====================================================================
+      # Commits and pushes any version changes made during the build
+      # - Sets Git identity for CI/CD operations
+      # - Checks for modified files (pom.xml, package.json)
+      # - Commits changes with descriptive message
+      # - Pushes back to the develop branch
+      - name: 'Commit Version Changes'
+        run: |
+          echo "🔄 Committing version changes..."
+          git config user.email "ci@kingsrook.com"
+          git config user.name "GitHub Actions CI"
+          
+          # Check for changes in both projects
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add .
+            git commit -m "Bump snapshot versions [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            echo "✅ Version changes committed and pushed"
+          else
+            echo "ℹ️ No version changes to commit"
+          fi
