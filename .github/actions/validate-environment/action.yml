@@ -85,7 +85,23 @@ runs:
       run: |
         # Check if GitHub token is present
         if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
-          echo "❌ ERROR: GITHUB_TOKEN is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: GITHUB_TOKEN is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is automatically provided by GitHub Actions and should not be missing."
+          echo "   If you're seeing this error, there may be a workflow configuration issue."
+          echo ""
+          echo "📋 CHECKLIST:"
+          echo "   ✓ Ensure the workflow is running in a GitHub repository"
+          echo "   ✓ Verify the workflow file syntax is correct"
+          echo "   ✓ Check that the workflow is not running in a fork without proper permissions"
+          echo ""
+          echo "💡 TROUBLESHOOTING:"
+          echo "   - Try re-running the workflow"
+          echo "   - Check repository settings > Actions > General > Workflow permissions"
+          echo "   - Ensure 'Read and write permissions' is selected"
+          echo ""
           exit 1
         fi
         
@@ -121,17 +137,66 @@ runs:
         
         # Validate all required GPG secrets are present
         if [ -z "${{ secrets.GPG_PRIVATE_KEY_B64 }}" ]; then
-          echo "❌ ERROR: GPG_PRIVATE_KEY_B64 is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: GPG_PRIVATE_KEY_B64 secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is required for GPG signing of artifacts."
+          echo "   You need to add it to your repository secrets."
+          echo ""
+          echo "📋 REQUIRED SECRETS:"
+          echo "   ✓ GPG_PRIVATE_KEY_B64 - Your GPG private key in base64 format"
+          echo "   ✓ GPG_KEYNAME - The email or key ID associated with your GPG key"
+          echo "   ✓ GPG_PASSPHRASE - The passphrase for your GPG key"
+          echo ""
+          echo "🔑 HOW TO GET YOUR GPG KEY:"
+          echo "   1. Export your GPG private key: gpg --export-secret-key --armor your-email@example.com"
+          echo "   2. Convert to base64: echo 'YOUR_PRIVATE_KEY_CONTENT' | base64 -w 0"
+          echo "   3. Add to repository secrets: Settings > Secrets and variables > Actions"
+          echo ""
+          echo "💡 ALTERNATIVE:"
+          echo "   If you don't need GPG signing, set require-gpg: false in your workflow"
+          echo ""
           exit 1
         fi
         
         if [ -z "${{ secrets.GPG_KEYNAME }}" ]; then
-          echo "❌ ERROR: GPG_KEYNAME is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: GPG_KEYNAME secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   Add GPG_KEYNAME to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - The email address associated with your GPG key, OR"
+          echo "   - The key ID (e.g., 12345678ABCDEF12)"
+          echo ""
+          echo "🔑 HOW TO FIND YOUR KEY NAME:"
+          echo "   Run: gpg --list-secret-keys --keyid-format LONG"
+          echo "   Look for the email or key ID in the output"
+          echo ""
           exit 1
         fi
         
         if [ -z "${{ secrets.GPG_PASSPHRASE }}" ]; then
-          echo "❌ ERROR: GPG_PASSPHRASE is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: GPG_PASSPHRASE secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   Add GPG_PASSPHRASE to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - The passphrase you set when creating your GPG key"
+          echo "   - If you don't remember it, you may need to create a new GPG key"
+          echo ""
+          echo "🔑 HOW TO CREATE A NEW GPG KEY:"
+          echo "   1. Run: gpg --full-generate-key"
+          echo "   2. Choose RSA and RSA (default)"
+          echo "   3. Choose 4096 bits"
+          echo "   4. Set an expiration date"
+          echo "   5. Enter your name and email"
+          echo "   6. Set a passphrase (remember this!)"
+          echo ""
           exit 1
         fi
         
@@ -175,12 +240,46 @@ runs:
         
         # Check required Maven Central secrets
         if [ -z "${{ secrets.CENTRAL_USERNAME }}" ]; then
-          echo "❌ ERROR: CENTRAL_USERNAME is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: CENTRAL_USERNAME secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is required for publishing to Maven Central."
+          echo "   You need to add it to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - Your Sonatype OSSRH username (usually your email)"
+          echo "   - This is the username you use to log into https://s01.oss.sonatype.org/"
+          echo ""
+          echo "🔑 HOW TO GET ACCESS:"
+          echo "   1. Go to https://s01.oss.sonatype.org/"
+          echo "   2. Click 'Sign Up' if you don't have an account"
+          echo "   3. Complete the registration process"
+          echo "   4. Add CENTRAL_USERNAME to repository secrets"
+          echo ""
+          echo "💡 ALTERNATIVE:"
+          echo "   If you don't need Maven Central publishing, set require-maven: false in your workflow"
+          echo ""
           exit 1
         fi
         
         if [ -z "${{ secrets.CENTRAL_PASSWORD }}" ]; then
-          echo "❌ ERROR: CENTRAL_PASSWORD is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: CENTRAL_PASSWORD secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   Add CENTRAL_PASSWORD to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - Your Sonatype OSSRH password"
+          echo "   - This is the password you use to log into https://s01.oss.sonatype.org/"
+          echo ""
+          echo "🔑 HOW TO RESET PASSWORD:"
+          echo "   1. Go to https://s01.oss.sonatype.org/"
+          echo "   2. Click 'Forgot Password?'"
+          echo "   3. Follow the password reset process"
+          echo "   4. Add the new password to repository secrets"
+          echo ""
           exit 1
         fi
         
@@ -211,7 +310,28 @@ runs:
         
         # Check required NPM token
         if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
-          echo "❌ ERROR: NPM_TOKEN is not set"
+          echo ""
+          echo "❌ CRITICAL ERROR: NPM_TOKEN secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is required for publishing to NPM registry."
+          echo "   You need to add it to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - Your NPM authentication token"
+          echo "   - This is NOT your NPM password"
+          echo ""
+          echo "🔑 HOW TO GET YOUR NPM TOKEN:"
+          echo "   1. Go to https://www.npmjs.com/"
+          echo "   2. Sign in to your account"
+          echo "   3. Click your profile picture > Access Tokens"
+          echo "   4. Click 'Generate New Token'"
+          echo "   5. Select 'Automation' token type"
+          echo "   6. Copy the token and add it to repository secrets"
+          echo ""
+          echo "💡 ALTERNATIVE:"
+          echo "   If you don't need NPM publishing, set require-npm: false in your workflow"
+          echo ""
           exit 1
         fi
         
