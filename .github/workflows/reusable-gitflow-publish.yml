@@ -435,6 +435,25 @@ jobs:
         run: |
           echo "🚀 Publishing Maven artifacts..."
           
+          # Create Maven settings.xml with credentials for central server
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << EOF
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                     xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                     http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>central</id>
+                <username>$CENTRAL_USERNAME</username>
+                <password>$CENTRAL_PASSWORD</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+          
+          echo "📝 Created Maven settings.xml with central credentials"
+          
           # Maven handles destination automatically based on version:
           # - SNAPSHOT versions go to snapshots repository
           # - RC versions go to staging repository
@@ -443,8 +462,6 @@ jobs:
             -DskipTests \
             -Dgpg.keyname="$GPG_KEYNAME" \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
-            -Dcentral.username="$CENTRAL_USERNAME" \
-            -Dcentral.password="$CENTRAL_PASSWORD" \
             ${{ inputs.maven-args }}
           
           echo "✅ Maven artifacts published"

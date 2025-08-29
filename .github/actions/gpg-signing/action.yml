@@ -8,13 +8,13 @@
 #   - name: '🔐 Setup GPG Signing'
 #     uses: ./.github/actions/gpg-signing
 #     with:
-#       gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
+#       gpg-private-key-b64: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
 #       gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
 #       gpg-keyname: ${{ secrets.GPG_KEYNAME }}
 #       test-signing: true
 #
 # INPUTS:
-#   - gpg-private-key: Base64 encoded GPG private key
+#   - gpg-private-key-b64: Base64 encoded GPG private key
 #   - gpg-passphrase: GPG key passphrase
 #   - gpg-keyname: GPG key identifier/email
 #   - test-signing: Whether to test GPG signing functionality
@@ -32,10 +32,6 @@ name: 'GPG Signing'
 description: 'Sets up and configures GPG signing for Maven and NPM projects'
 
 inputs:
-  gpg-private-key:
-    description: 'Base64 encoded GPG private key (legacy name)'
-    required: false
-    default: ''
   gpg-passphrase:
     description: 'GPG key passphrase'
     required: true
@@ -43,7 +39,7 @@ inputs:
     description: 'GPG key identifier/email'
     required: true
   gpg-private-key-b64:
-    description: 'Base64 encoded GPG private key (primary input)'
+    description: 'Base64 encoded GPG private key'
     required: true
   test-signing:
     description: 'Whether to test GPG signing functionality'
@@ -107,11 +103,8 @@ runs:
       run: |
         echo "🔐 Importing GPG private key..."
         
-        # Use the appropriate input for the private key
-        PRIVATE_KEY="${{ inputs.gpg-private-key }}"
-        if [ -z "$PRIVATE_KEY" ] && [ -n "${{ inputs.gpg-private-key-b64 }}" ]; then
-          PRIVATE_KEY="${{ inputs.gpg-private-key-b64 }}"
-        fi
+        # Use the private key input
+        PRIVATE_KEY="${{ inputs.gpg-private-key-b64 }}"
         
         if [ -z "$PRIVATE_KEY" ]; then
           echo "❌ No GPG private key provided"
