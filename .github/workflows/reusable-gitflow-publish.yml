@@ -415,6 +415,24 @@ jobs:
       - name: 'Checkout code'
         uses: actions/checkout@v4
 
+      - name: 'Setup GPG for Signing'
+        if: contains(inputs.project-type, 'maven')
+        run: |
+          echo "🔐 Setting up GPG for artifact signing..."
+          
+          # Create GPG directory
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          
+          # Import GPG private key
+          echo "${{ secrets.GPG_PRIVATE_KEY_B64 }}" | tr -d ' \r\n\t' | base64 -d | gpg --batch --import
+          
+          # List imported keys for debugging
+          echo "📋 Imported GPG keys:"
+          gpg --list-secret-keys --keyid-format LONG
+          
+          echo "✅ GPG setup complete"
+
       - name: 'Publish Maven Artifacts'
         if: contains(inputs.project-type, 'maven')
         working-directory: ${{ inputs.maven-working-directory }}
