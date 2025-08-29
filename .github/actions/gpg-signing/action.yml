@@ -147,8 +147,8 @@ runs:
         echo "use-agent" >> ~/.gnupg/gpg.conf
         echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
         
-        # Set passphrase for the key
-        echo "${{ inputs.gpg-passphrase }}" | gpg --batch --passphrase-fd 0 --edit-key "${{ inputs.gpg-keyname }}" trust quit
+        # Set trust level for the key (non-interactive)
+        echo "trust" | gpg --batch --command-fd 0 --edit-key "${{ inputs.gpg-keyname }}" quit
         
         echo "✅ GPG key configured successfully"
 
