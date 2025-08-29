@@ -33,8 +33,9 @@ description: 'Sets up and configures GPG signing for Maven and NPM projects'
 
 inputs:
   gpg-private-key:
-    description: 'Base64 encoded GPG private key'
-    required: true
+    description: 'Base64 encoded GPG private key (legacy name)'
+    required: false
+    default: ''
   gpg-passphrase:
     description: 'GPG key passphrase'
     required: true
@@ -42,9 +43,8 @@ inputs:
     description: 'GPG key identifier/email'
     required: true
   gpg-private-key-b64:
-    description: 'Base64 encoded GPG private key (alternative name)'
-    required: false
-    default: ''
+    description: 'Base64 encoded GPG private key (primary input)'
+    required: true
   test-signing:
     description: 'Whether to test GPG signing functionality'
     required: false

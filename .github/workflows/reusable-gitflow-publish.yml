@@ -417,7 +417,7 @@ jobs:
 
       - name: '🔐 Setup GPG Signing'
         if: contains(inputs.project-type, 'maven')
-        uses: ./.github/actions/gpg-signing
+        uses: Kingsrook/github-actions-library/.github/actions/gpg-signing@main
         with:
           gpg-private-key-b64: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
           gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
