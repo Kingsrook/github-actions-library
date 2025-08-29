@@ -310,20 +310,20 @@ jobs:
         run: |
           echo "📝 Calculating versions using calculate-version.sh..."
           
-          # Make script executable
-          chmod +x scripts/calculate-version.sh
-          
           # Run version calculation for Maven projects
           if [[ "${{ inputs.project-type }}" == "maven" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
             # Get old version from Maven project
             cd ${{ inputs.maven-working-directory }}
             OLD_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
             echo "Old Maven version: $OLD_VERSION"
-            cd $GITHUB_WORKSPACE
             
-            # Run calculate-version.sh from repository root
-            echo "Running calculate-version.sh from repository root..."
-            ./scripts/calculate-version.sh --verbose --output-format=json > version-output.json
+            # Run calculate-version.sh from the library repository
+            echo "Running calculate-version.sh from library repository..."
+            # The script is in the library repo, so we need to access it from there
+            # Since this workflow runs in the calling repo context, we need to reference the library repo
+            curl -s https://raw.githubusercontent.com/Kingsrook/github-actions-library/main/scripts/calculate-version.sh > calculate-version.sh
+            chmod +x calculate-version.sh
+            ./calculate-version.sh --verbose --output-format json > version-output.json
             
             # Parse JSON output
             NEW_VERSION=$(cat version-output.json | jq -r '.new_version')
@@ -333,6 +333,8 @@ jobs:
             echo "maven-version=$NEW_VERSION" >> $GITHUB_OUTPUT
             echo "old-version=$OLD_VERSION" >> $GITHUB_OUTPUT
             echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            
+            cd $GITHUB_WORKSPACE
           fi
           
           # Handle NPM projects
@@ -453,7 +455,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 'Git Operations'
         uses: ./.github/actions/git-operations
