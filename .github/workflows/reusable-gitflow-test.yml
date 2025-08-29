@@ -75,7 +75,7 @@ jobs:
   # secrets, and configurations. It's designed to fail fast if there are
   # any authentication or configuration issues.
   validate-environment:
-    name: '🔍 Validate Environment'
+    name: 'Validate'
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout code'
@@ -99,7 +99,7 @@ jobs:
   # - Runs NPM build and test for NPM projects
   # - Ensures quality before proceeding
   build-and-test:
-    name: '🔨 Build and Test'
+    name: 'Build'
     runs-on: ubuntu-latest
     needs: validate-environment
     steps:
@@ -125,7 +125,7 @@ jobs:
   # - Uploads NPM coverage reports as artifacts
   # - Continues even if no reports found (warn mode)
   artifact-collection:
-    name: '📦 Collect Artifacts'
+    name: 'Artifacts'
     runs-on: ubuntu-latest
     needs: [validate-environment, build-and-test]
     steps:

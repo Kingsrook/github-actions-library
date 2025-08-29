@@ -96,7 +96,7 @@ jobs:
   # secrets, and configurations. It's designed to fail fast if there are
   # any authentication or configuration issues.
   validate-environment:
-    name: '🔍 Validate Environment'
+    name: 'Validate'
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout code'
@@ -112,7 +112,7 @@ jobs:
           echo "Project Type: ${{ inputs.project-type }}"
           echo "=========================================="
 
-      - name: '✅ Validate GPG Secrets'
+      - name: 'GPG'
         shell: bash
         run: |
           echo "🔐 Validating GPG configuration..."
@@ -178,7 +178,7 @@ jobs:
           
           echo "✅ GPG secrets validation passed!"
 
-      - name: '✅ Validate Maven Central Secrets'
+      - name: 'Maven Central'
         if: contains(inputs.project-type, 'maven')
         shell: bash
         run: |
@@ -228,7 +228,7 @@ jobs:
           
           echo "✅ Maven Central secrets validation passed!"
 
-      - name: '✅ Validate NPM Token'
+      - name: 'NPM Token'
         if: contains(inputs.project-type, 'npm')
         shell: bash
         run: |
@@ -259,14 +259,6 @@ jobs:
           
           echo "✅ NPM token validation passed!"
 
-      - name: '✅ Environment Validation Complete'
-        run: |
-          echo "=========================================="
-          echo "✅ ENVIRONMENT VALIDATION COMPLETE"
-          echo "=========================================="
-          echo "All required secrets and configurations are present!"
-          echo "Proceeding with build and publish..."
-          echo "=========================================="
 
   # ========================================================================
   # JOB 2: VERSION MANAGEMENT
@@ -276,7 +268,7 @@ jobs:
   # - Uses calculate-version.sh to determine next version based on branch
   # - Updates version files for both Maven and NPM projects
   version-management:
-    name: '📝 Version Management'
+    name: 'Version Management'
     runs-on: ubuntu-latest
     needs: validate-environment
     if: inputs.skip-version-bump != true
@@ -304,7 +296,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
-      - name: 'Calculate and Set Versions'
+      - name: 'Calculate'
         id: version-calc
         shell: bash
         run: |
@@ -384,7 +376,7 @@ jobs:
   # - Runs NPM build and test for NPM projects
   # - Ensures quality before publishing
   build-and-test:
-    name: '🔨 Build and Test'
+    name: 'Build'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management]
     steps:
@@ -408,7 +400,7 @@ jobs:
   # This job publishes artifacts - Maven and NPM handle destinations automatically
   # based on version suffixes (SNAPSHOT, RC, stable)
   publish-artifacts:
-    name: '🚀 Publish Artifacts'
+    name: 'Publish'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, build-and-test]
     steps:
@@ -494,7 +486,7 @@ jobs:
   # - Pushes changes to the current branch
   # - Creates a commit message with version information
   git-operations:
-    name: '📝 Git Operations'
+    name: 'Git'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, publish-artifacts]
     if: inputs.skip-version-bump != true
@@ -517,7 +509,7 @@ jobs:
   # ========================================================================
   # This job provides a summary of what was accomplished
   summary:
-    name: '📊 Summary'
+    name: 'Summary'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, publish-artifacts, git-operations]
     if: always()
