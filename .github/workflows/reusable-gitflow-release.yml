@@ -128,7 +128,7 @@ jobs:
           fetch-depth: 0  # Full history for version calculation
       
       - name: '🔍 Validate Environment & Secrets'
-        uses: Kingsrook/github-actions-library/.github/actions/validate-environment@main
+        uses: ./.github/actions/validate-environment
         with:
           project-type: ${{ inputs.project-type }}
           require-github-token: 'true'
