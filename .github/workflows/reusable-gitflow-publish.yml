@@ -459,6 +459,7 @@ jobs:
           # - RC versions go to staging repository
           # - Stable versions go to releases repository
           mvn clean deploy -B \
+            -P release \
             -DskipTests \
             -Dgpg.keyname="$GPG_KEYNAME" \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
