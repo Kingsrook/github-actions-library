@@ -89,7 +89,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 'Validate Environment & Secrets'
-        uses: ./.github/actions/validate-environment
+        uses: Kingsrook/github-actions-library/.github/actions/validate-environment@main
         with:
           project-type: ${{ inputs.project-type }}
           require-github-token: true
