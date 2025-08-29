@@ -321,8 +321,8 @@ jobs:
             OLD_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
             echo "Old Maven version: $OLD_VERSION"
             
-            # Run calculate-version.sh
-            ../../scripts/calculate-version.sh --verbose --output-format=json > version-output.json
+            # Run calculate-version.sh (use absolute path from repository root)
+            $GITHUB_WORKSPACE/scripts/calculate-version.sh --verbose --output-format=json > version-output.json
             
             # Parse JSON output
             NEW_VERSION=$(cat version-output.json | jq -r '.new_version')
