@@ -41,6 +41,10 @@ inputs:
   gpg-keyname:
     description: 'GPG key identifier/email'
     required: true
+  gpg-private-key-b64:
+    description: 'Base64 encoded GPG private key (alternative name)'
+    required: false
+    default: ''
   test-signing:
     description: 'Whether to test GPG signing functionality'
     required: false
@@ -103,8 +107,19 @@ runs:
       run: |
         echo "🔐 Importing GPG private key..."
         
+        # Use the appropriate input for the private key
+        PRIVATE_KEY="${{ inputs.gpg-private-key }}"
+        if [ -z "$PRIVATE_KEY" ] && [ -n "${{ inputs.gpg-private-key-b64 }}" ]; then
+          PRIVATE_KEY="${{ inputs.gpg-private-key-b64 }}"
+        fi
+        
+        if [ -z "$PRIVATE_KEY" ]; then
+          echo "❌ No GPG private key provided"
+          exit 1
+        fi
+        
         # Import the private key
-        echo "${{ inputs.gpg-private-key }}" | base64 -d | gpg --batch --import
+        echo "$PRIVATE_KEY" | tr -d ' \r\n\t' | base64 -d | gpg --batch --import
         
         if [ $? -eq 0 ]; then
           echo "✅ GPG private key imported successfully"
