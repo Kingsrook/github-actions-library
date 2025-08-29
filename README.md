@@ -1,246 +1,218 @@
 # GitHub Actions Library for QQQ Repositories
 
-A comprehensive, reusable GitHub Actions library that implements GitFlow-based CI/CD pipelines for all QQQ repositories. This library provides standardized workflows for Maven, NPM, and hybrid projects with automatic version management, GPG signing, and publishing to Maven Central and NPM.
+This repository contains reusable GitHub Actions workflows and composite actions for the QQQ project ecosystem. It implements the DRY (Don't Repeat Yourself) principle by centralizing all CI/CD logic in one place.
 
-> 📚 **Related Documentation**: This library implements the CI/CD strategies documented in the [QQQ Wiki](https://github.com/Kingsrook/qqq.wiki). For detailed information about QQQ architecture, branching strategies, and development workflows, see the [QQQ Wiki Home](https://github.com/Kingsrook/qqq.wiki/wiki/Home).
+## 🚀 Quick Start
 
-## 🚀 **Features**
-
-- **🔍 Environment Validation** - Comprehensive secret and configuration validation
-- **🌿 GitFlow Support** - Complete GitFlow branching strategy implementation
-- **📦 Multi-Platform Publishing** - Maven Central, NPM, and GitHub releases
-- **🔐 GPG Signing** - Automatic artifact signing for security
-- **🔄 Version Management** - Automatic version bumps based on branch type
-- **🧪 Testing & Quality** - Built-in testing, linting, and coverage reporting
-- **♻️ Reusable Workflows** - DRY principle implementation across all repos
-
-## 🏗️ **Architecture**
-
-### **Repository Types Supported**
-- **Maven-Only** - Java projects publishing to Maven Central
-- **NPM-Only** - Node.js projects publishing to npmjs.org
-- **Hybrid** - Projects with both Maven and NPM components
-
-### **Branch Strategy**
-This library implements the GitFlow branching strategy as documented in the [QQQ Wiki](https://github.com/Kingsrook/qqq.wiki/wiki/Home). For detailed information about the branching strategy, see:
-
-- **`main`** - Production releases (X.Y.Z) → Maven Central + NPM + GitHub releases
-- **`develop`** - Development snapshots (X.Y.Z-SNAPSHOT) → Maven Central + NPM
-- **`release/*`** - Release candidates (X.Y.0-RC.n) → Maven Central + NPM
-- **`hotfix/*`** - Hotfix releases (X.Y.(Z+1)) → Maven Central + NPM + GitHub releases
-- **`feature/*`** - Feature development → Build and test only
-
-> 📖 **Learn More**: See [Branching and Versioning](https://github.com/Kingsrook/qqq.wiki/wiki/Branching-and-Versioning) in the QQQ Wiki for detailed explanations of the GitFlow strategy.
-
-## 📁 **Library Structure**
-
-```
-.github/
-├── actions/                          # Reusable composite actions
-│   ├── validate-environment/         # Environment validation action ✅
-│   ├── version-management/           # Maven & NPM version management ✅
-│   ├── gpg-signing/                  # GPG signing setup and verification ✅
-│   ├── maven-publish/                # Maven Central publishing ✅
-│   ├── npm-publish/                  # NPM registry publishing ✅
-│   ├── github-release/               # GitHub release creation ✅
-│   └── git-operations/               # Git operations (tag, commit, push) ✅
-├── workflows/                        # Reusable workflows
-│   ├── reusable-gitflow-test.yml    # Feature branch testing ✅
-│   ├── reusable-gitflow-snapshot.yml # Develop branch snapshots ✅
-│   ├── reusable-gitflow-rc.yml      # Release candidates ✅
-│   ├── reusable-gitflow-release.yml # Production releases ✅
-│   └── reusable-gitflow-hotfix.yml  # Hotfix releases ✅
-└── scripts/                          # Utility scripts
-    ├── calculate-version.sh         # Maven version management ✅
-    ├── sync-npm-version.sh          # NPM version synchronization ✅
-    ├── collect-jacoco-reports.sh    # JaCoCo report collection ✅
-    └── concatenate-test-output.sh   # Test output aggregation ✅
+### For Publishing Branches (main, release/*, develop, hotfix/*)
+```yaml
+- uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-publish@main
+  with:
+    project-type: 'hybrid'        # maven, npm, or hybrid
+    maven-working-directory: 'maven-project'
+    npm-working-directory: 'npm-project'
 ```
 
-## 🔧 **Usage**
+### For Feature Branches (feature/*, any other branch)
+```yaml
+- uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
+  with:
+    project-type: 'hybrid'
+    maven-working-directory: 'maven-project'
+    npm-working-directory: 'npm-project'
+```
 
-### **1. Basic Repository Setup**
+## 📋 Available Workflows
 
-Each repository needs a minimal `.github/workflows/ci.yml`:
+### 1. `reusable-gitflow-publish.yml` - Publishing Workflow
+**Use on**: `main`, `release/*`, `develop`, `hotfix/*` branches
 
+**What it does**:
+- ✅ Environment validation (secrets, GPG, Maven Central, NPM)
+- ✅ Intelligent version management using `calculate-version.sh`
+- ✅ Build and test projects
+- ✅ Publish to Maven Central and NPM
+- ✅ Commit and push version changes
+
+**Version Strategy**:
+- `develop` → Creates `X.Y.Z-SNAPSHOT` versions
+- `release/*` → Creates `X.Y.Z-RC.N` versions
+- `main` → Creates stable `X.Y.Z` versions
+- `hotfix/*` → Creates patch `X.Y.Z+1` versions
+
+### 2. `reusable-gitflow-test.yml` - Testing Workflow
+**Use on**: `feature/*` and any other branches
+
+**What it does**:
+- ✅ Environment validation (no GPG required)
+- ✅ Build and test projects
+- ✅ Collect test results and coverage reports
+- ✅ No publishing or version changes
+
+## 🔧 Composite Actions
+
+### Core Actions
+- **`validate-environment`** - Validates required secrets and configurations
+- **`setup-gpg`** - Sets up GPG environment for artifact signing
+- **`version-bump`** - Manages version numbers for Maven and NPM projects
+- **`build-test`** - Builds and tests Maven and NPM projects
+- **`publish-artifacts`** - Publishes to Maven Central and NPM
+- **`git-operations`** - Handles Git commit and push operations
+
+## 📚 Usage Examples
+
+### Maven-Only Project
 ```yaml
 name: 'CI/CD Pipeline'
+
 on:
   push:
-    branches: [main, develop, 'release/**', 'hotfix/**', 'feature/**']
+    branches: [ main, develop, release/*, hotfix/*, feature/* ]
   pull_request:
-    branches: [main, develop]
+    branches: [ main, develop ]
 
 jobs:
-  test:
-    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
-    with:
-      project-type: 'maven'  # or 'npm' or 'hybrid'
-      java-version: '17'
-      node-version: '18'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  snapshot:
-    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-snapshot@main
+  # Publishing branches
+  publish:
+    if: contains(github.ref, 'main') || contains(github.ref, 'develop') || contains(github.ref, 'release/') || contains(github.ref, 'hotfix/')
+    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-publish@main
     with:
       project-type: 'maven'
+      java-version: '17'
+      maven-working-directory: '.'
     secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GPG_PRIVATE_KEY_B64: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
+      GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+      CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+
+  # Feature branches
+  test:
+    if: contains(github.ref, 'feature/') || !contains(github.ref, 'main') && !contains(github.ref, 'develop') && !contains(github.ref, 'release/') && !contains(github.ref, 'hotfix/')
+    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
+    with:
+      project-type: 'maven'
+      java-version: '17'
+      maven-working-directory: '.'
+```
+
+### Hybrid Project (Maven + NPM)
+```yaml
+name: 'CI/CD Pipeline'
+
+on:
+  push:
+    branches: [ main, develop, release/*, hotfix/*, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Publishing branches
+  publish:
+    if: contains(github.ref, 'main') || contains(github.ref, 'develop') || contains(github.ref, 'release/') || contains(github.ref, 'hotfix/')
+    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-publish@main
+    with:
+      project-type: 'hybrid'
+      java-version: '17'
+      node-version: '18'
+      maven-working-directory: 'backend'
+      npm-working-directory: 'frontend'
+    secrets:
       GPG_PRIVATE_KEY_B64: ${{ secrets.GPG_PRIVATE_KEY_B64 }}
       GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
       CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-```
 
-### **2. Required Secrets**
-
-All repositories must have these secrets configured. For information about setting up these secrets in your QQQ repository, see [Developer Onboarding](https://github.com/Kingsrook/qqq.wiki/wiki/Developer-Onboarding) in the QQQ Wiki.
-
-| Secret | Description | Required For |
-|--------|-------------|--------------|
-| `GITHUB_TOKEN` | GitHub API access | All workflows |
-| `GPG_PRIVATE_KEY_B64` | Base64 encoded GPG private key | Publishing workflows |
-| `GPG_KEYNAME` | GPG key identifier | Publishing workflows |
-| `GPG_PASSPHRASE` | GPG key passphrase | Publishing workflows |
-| `CENTRAL_USERNAME` | Maven Central username | Maven publishing |
-| `CENTRAL_PASSWORD` | Maven Central password | Maven publishing |
-| `NPM_TOKEN` | NPM registry token | NPM publishing |
-
-### **3. Project Configuration**
-
-#### **Maven Projects**
-- Must have `pom.xml` with `<revision>` property
-- Should include GPG and Maven Central publishing plugins
-- Example: See `gha-test-repo/maven-project/pom.xml`
-- For Maven configuration best practices, see [Core Modules](https://github.com/Kingsrook/qqq.wiki/wiki/Core-Modules) in the QQQ Wiki
-
-#### **NPM Projects**
-- Must have `package.json` with version field
-- Should include TypeScript configuration
-- Example: See `gha-test-repo/npm-project/package.json`
-
-## 🔄 **Workflow Details**
-
-### **Environment Validation**
-Every workflow starts with comprehensive environment validation:
-- ✅ GitHub token validation
-- ✅ GPG key setup and testing
-- ✅ Maven Central connectivity
-- ✅ NPM authentication
-- ✅ Repository access verification
-- ✅ Build tools availability
-- ✅ Project file validation
-
-### **Version Management**
-Automatic version management based on branch type. This implements the versioning strategy documented in [Semantic Versioning Policy](https://github.com/Kingsrook/qqq.wiki/wiki/Semantic-Versioning-Policy) in the QQQ Wiki:
-
-- **`develop`** → Next minor version (X.Y+1.0-SNAPSHOT)
-- **`release/*`** → RC increments (X.Y.0-RC.n)
-- **`hotfix/*`** → Patch increments (X.Y.Z+1)
-- **`main`** → Stable release (X.Y.Z)
-
-### **Publishing Strategy**
-- **Snapshots** → Maven Central snapshots + NPM with `snapshot` tag
-- **RCs** → Maven Central releases + NPM with `rc` tag
-- **Releases** → Maven Central releases + NPM latest + GitHub releases
-
-## 🚀 **Quick Start**
-
-### **For Maven-Only Repositories**
-```yaml
-# .github/workflows/ci.yml
-jobs:
+  # Feature branches
   test:
-    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
-    with:
-      project-type: 'maven'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### **For NPM-Only Repositories**
-```yaml
-# .github/workflows/ci.yml
-jobs:
-  test:
-    uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
-    with:
-      project-type: 'npm'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### **For Hybrid Repositories**
-```yaml
-# .github/workflows/ci.yml
-jobs:
-  test:
+    if: contains(github.ref, 'feature/') || !contains(github.ref, 'main') && !contains(github.ref, 'develop') && !contains(github.ref, 'release/') && !contains(github.ref, 'hotfix/')
     uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-test@main
     with:
       project-type: 'hybrid'
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      java-version: '17'
+      node-version: '18'
+      maven-working-directory: 'backend'
+      npm-working-directory: 'frontend'
 ```
 
-## 🔍 **Testing the Library**
+## 🔐 Required Secrets
 
-The `gha-test-repo` repository contains a complete test implementation:
-- Maven project with proper publishing configuration
-- NPM project with TypeScript and testing setup
-- Complete CI/CD pipeline using this library
-- All workflows tested and validated
+### For Publishing Workflows
+- `GPG_PRIVATE_KEY_B64` - Base64 encoded GPG private key
+- `GPG_KEYNAME` - GPG key identifier (email or key ID)
+- `GPG_PASSPHRASE` - GPG key passphrase
+- `CENTRAL_USERNAME` - Sonatype OSSRH username
+- `CENTRAL_PASSWORD` - Sonatype OSSRH password
+- `NPM_TOKEN` - NPM authentication token
 
-## 📚 **Documentation**
+### For Testing Workflows
+- No secrets required (unless your tests need them)
 
-- **Inline Comments** - All code includes comprehensive inline documentation
-- **Workflow Examples** - See `gha-test-repo/.github/workflows/ci.yml`
-- **Project Templates** - Maven, NPM, and hybrid project examples
-- **Configuration Files** - Maven settings, NPM config, and more
+## 🧠 Version Management
 
-### **Related QQQ Wiki Documentation**
-For comprehensive information about the QQQ ecosystem, see these wiki pages:
+The publishing workflow uses the `calculate-version.sh` script to intelligently determine the next version based on:
 
-- **[Home](https://github.com/Kingsrook/qqq.wiki/wiki/Home)** - Overview of the QQQ project
-- **[High-Level Architecture](https://github.com/Kingsrook/qqq.wiki/wiki/High-Level-Architecture)** - System architecture and design
-- **[Branching and Versioning](https://github.com/Kingsrook/qqq.wiki/wiki/Branching-and-Versioning)** - GitFlow strategy and version management
-- **[Semantic Versioning Policy](https://github.com/Kingsrook/qqq.wiki/wiki/Semantic-Versioning-Policy)** - Version numbering conventions
-- **[Core Modules](https://github.com/Kingsrook/qqq.wiki/wiki/Core-Modules)** - Maven module structure and configuration
-- **[Developer Onboarding](https://github.com/Kingsrook/qqq.wiki/wiki/Developer-Onboarding)** - Setup and configuration guide
-- **[Testing](https://github.com/Kingsrook/qqq.wiki/wiki/Testing)** - Testing strategies and best practices
-- **[Release Flow](https://github.com/Kingsrook/qqq.wiki/wiki/Release-Flow)** - Release process and procedures
+- **Current branch name** (develop, release/*, main, hotfix/*)
+- **Current version in pom.xml**
+- **GitFlow conventions**
 
-## 🤝 **Contributing**
+The script automatically:
+- Detects branch type from Git
+- Calculates appropriate next version
+- Updates pom.xml with new version
+- Handles SNAPSHOT, RC, and stable versions
 
-When contributing to this library:
-1. **Document Everything** - Add inline comments for all complex logic
-2. **Test Thoroughly** - Use `gha-test-repo` for testing changes
-3. **Update README** - Keep this documentation current
-4. **Follow Patterns** - Maintain consistency with existing code
+## 🏗️ Architecture
 
-For contribution guidelines, see [Contribution Guidelines](https://github.com/Kingsrook/qqq.wiki/wiki/Contribution-Guidelines) in the QQQ Wiki.
+### DRY Principle Implementation
+- **Composite Actions**: Reusable building blocks for common operations
+- **Unified Workflows**: Two workflows handle all GitFlow scenarios
+- **Intelligent Versioning**: Script-based version management
+- **Automatic Publishing**: Maven/NPM handle destinations based on version suffixes
 
-## 📞 **Support**
+### Workflow Structure
+```
+reusable-gitflow-publish.yml (Publishing)
+├── Environment Validation
+├── Version Management (calculate-version.sh)
+├── Build and Test
+├── Publish Artifacts
+└── Git Operations
 
-For issues or questions:
-1. Check the inline documentation in the code
-2. Review the `gha-test-repo` examples
-3. Consult the [QQQ Wiki](https://github.com/Kingsrook/qqq.wiki/wiki/Home) for broader context
-4. Open an issue in this repository
-5. Contact the Kingsrook team
+reusable-gitflow-test.yml (Testing)
+├── Environment Validation
+├── Build and Test
+└── Artifact Collection
+```
 
-## 🔄 **Migration from CircleCI**
+## 🔄 Migration from CircleCI
 
-This library replaces the CircleCI configurations used in QQQ repositories. For information about the migration process and differences between CircleCI and GitHub Actions, see:
+To migrate from CircleCI to this library:
 
-- **[Building Locally](https://github.com/Kingsrook/qqq.wiki/wiki/Building-Locally)** - Local development setup
-- **[Common Errors](https://github.com/Kingsrook/qqq.wiki/wiki/Common-Errors)** - Troubleshooting guide
-- **[Feature Development](https://github.com/Kingsrook/qqq.wiki/wiki/Feature-Development)** - Development workflow
+1. **Remove CircleCI config**: Delete `.circleci/config.yml`
+2. **Add GitHub Actions**: Create `.github/workflows/ci.yml` using the examples above
+3. **Configure secrets**: Add required secrets to your GitHub repository
+4. **Test**: Push to a feature branch to test the testing workflow
+5. **Deploy**: Push to develop/main to test the publishing workflow
 
----
+## 📖 Documentation
 
-**Built with ❤️ by the Kingsrook Team**
+- **QQQ Wiki**: [Link to QQQ wiki documentation]
+- **GitFlow Guide**: [Link to GitFlow documentation]
+- **Maven Central Publishing**: [Link to Maven Central guide]
+- **NPM Publishing**: [Link to NPM publishing guide]
 
-> 💡 **Tip**: This library is designed to work seamlessly with the existing QQQ ecosystem. For the best experience, familiarize yourself with the [QQQ Wiki](https://github.com/Kingsrook/qqq.wiki/wiki/Home) documentation. 
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 License
+
+[Your license information here] 
