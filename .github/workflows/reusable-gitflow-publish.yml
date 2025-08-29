@@ -323,7 +323,28 @@ jobs:
             # Since this workflow runs in the calling repo context, we need to reference the library repo
             curl -s https://raw.githubusercontent.com/Kingsrook/github-actions-library/main/scripts/calculate-version.sh > calculate-version.sh
             chmod +x calculate-version.sh
-            ./calculate-version.sh --verbose --output-format json > version-output.json
+            
+            # Debug: Check if script was downloaded and is executable
+            echo "Script downloaded, size: $(wc -c < calculate-version.sh)"
+            echo "Script executable: $(ls -la calculate-version.sh)"
+            
+            # Run the script with better error handling
+            echo "Executing calculate-version.sh..."
+            if ./calculate-version.sh --verbose --output-format json > version-output.json 2>script-errors.log; then
+              echo "Script executed successfully"
+              echo "Script output size: $(wc -c < version-output.json)"
+              echo "Script output preview:"
+              head -5 version-output.json
+              echo "Script errors (if any):"
+              cat script-errors.log
+            else
+              echo "Script failed with exit code $?"
+              echo "Script errors:"
+              cat script-errors.log
+              echo "Script output (if any):"
+              cat version-output.json
+              exit 1
+            fi
             
             # Parse JSON output
             NEW_VERSION=$(cat version-output.json | jq -r '.new_version')
