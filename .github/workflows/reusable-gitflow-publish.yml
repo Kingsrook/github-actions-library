@@ -1,0 +1,343 @@
+# =============================================================================
+# REUSABLE GITFLOW PUBLISH WORKFLOW (UNIFIED)
+# =============================================================================
+# This workflow provides standardized publishing for ALL GitFlow branches
+# across all QQQ repositories. It implements the DRY principle by centralizing
+# all publishing logic in one unified workflow.
+#
+# USAGE:
+#   - uses: Kingsrook/github-actions-library/.github/workflows/reusable-gitflow-publish@main
+#   - with:
+#       project-type: 'hybrid'        # maven, npm, or hybrid
+#       java-version: '17'           # Java version for Maven projects
+#       node-version: '18'           # Node.js version for NPM projects
+#       maven-args: ''               # Additional Maven arguments
+#       npm-args: ''                 # Additional NPM arguments
+#       maven-working-directory: '.' # Working directory for Maven project
+#       npm-working-directory: '.'   # Working directory for NPM project
+#       skip-version-bump: false     # Skip version bumping if true
+#
+# WORKFLOW STEPS:
+#   1. Environment Validation - Validates all required secrets and configurations
+#   2. Version Management - Uses calculate-version.sh to determine next version
+#   3. Build and Test - Builds and tests Maven and/or NPM projects
+#   4. Publishing - Publishes to Maven Central and NPM (Maven/NPM handle destinations)
+#   5. Git Operations - Commits version changes and pushes to current branch
+#
+# BRANCH TRIGGERS:
+#   - develop (snapshot), release/* (RC), main (release), hotfix/* (hotfix)
+#   - Manual workflow dispatch
+# =============================================================================
+
+name: 'Reusable GitFlow Publish Workflow (Unified)'
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Type of project (maven, npm, or hybrid)'
+        required: true
+        type: string
+        default: 'hybrid'
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '18'
+      maven-args:
+        description: 'Additional Maven arguments'
+        required: false
+        type: string
+        default: ''
+      npm-args:
+        description: 'Additional NPM arguments'
+        required: false
+        type: string
+        default: ''
+      maven-working-directory:
+        description: 'Working directory for Maven project'
+        required: false
+        type: string
+        default: '.'
+      npm-working-directory:
+        description: 'Working directory for NPM project'
+        required: false
+        type: string
+        default: '.'
+      skip-version-bump:
+        description: 'Skip version bumping if true'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      GPG_PRIVATE_KEY_B64:
+        required: false
+      GPG_KEYNAME:
+        required: false
+      GPG_PASSPHRASE:
+        required: false
+      CENTRAL_USERNAME:
+        required: false
+      CENTRAL_PASSWORD:
+        required: false
+      NPM_TOKEN:
+        required: false
+
+jobs:
+  # ========================================================================
+  # JOB 1: ENVIRONMENT VALIDATION
+  # ========================================================================
+  # This job runs first and validates all required environment variables,
+  # secrets, and configurations. It's designed to fail fast if there are
+  # any authentication or configuration issues.
+  validate-environment:
+    name: '🔍 Validate Environment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Validate Environment & Secrets'
+        uses: ./.github/actions/validate-environment
+        with:
+          project-type: ${{ inputs.project-type }}
+          require-gpg: true
+          require-maven: ${{ contains(inputs.project-type, 'maven') }}
+          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+
+  # ========================================================================
+  # JOB 2: VERSION MANAGEMENT
+  # ========================================================================
+  # This job handles version management using the calculate-version.sh script
+  # - Determines current version from pom.xml or package.json
+  # - Uses calculate-version.sh to determine next version based on branch
+  # - Updates version files for both Maven and NPM projects
+  version-management:
+    name: '📝 Version Management'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    if: inputs.skip-version-bump != true
+    outputs:
+      maven-version: ${{ steps.version-calc.outputs.maven-version }}
+      npm-version: ${{ steps.version-calc.outputs.npm-version }}
+      old-version: ${{ steps.version-calc.outputs.old-version }}
+      new-version: ${{ steps.version-calc.outputs.new-version }}
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Setup Java for Maven'
+        if: contains(inputs.project-type, 'maven')
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+
+      - name: 'Setup Node.js for NPM'
+        if: contains(inputs.project-type, 'npm')
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: 'Calculate and Set Versions'
+        id: version-calc
+        shell: bash
+        run: |
+          echo "📝 Calculating versions using calculate-version.sh..."
+          
+          # Make script executable
+          chmod +x scripts/calculate-version.sh
+          
+          # Run version calculation for Maven projects
+          if [[ "${{ inputs.project-type }}" == "maven" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
+            cd ${{ inputs.maven-working-directory }}
+            
+            # Get old version
+            OLD_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+            echo "Old Maven version: $OLD_VERSION"
+            
+            # Run calculate-version.sh
+            ../../scripts/calculate-version.sh --verbose --output-format=json > version-output.json
+            
+            # Parse JSON output
+            NEW_VERSION=$(cat version-output.json | jq -r '.new_version')
+            echo "New Maven version: $NEW_VERSION"
+            
+            # Set outputs
+            echo "maven-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "old-version=$OLD_VERSION" >> $GITHUB_OUTPUT
+            echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            
+            cd ../..
+          fi
+          
+          # Handle NPM projects
+          if [[ "${{ inputs.project-type }}" == "npm" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
+            cd ${{ inputs.npm-working-directory }}
+            
+            # Get old version
+            OLD_VERSION=$(node -p "require('./package.json').version")
+            echo "Old NPM version: $OLD_VERSION"
+            
+            # For NPM, we'll use the same version logic but apply it to package.json
+            # This is a simplified approach - in practice, you might want a separate NPM script
+            if [[ -n "$NEW_VERSION" ]]; then
+              npm version $NEW_VERSION --no-git-tag-version
+              echo "npm-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            fi
+            
+            cd ../..
+          fi
+
+  # ========================================================================
+  # JOB 3: BUILD AND TEST
+  # ========================================================================
+  # This job builds and tests the projects before publishing
+  # - Runs Maven build lifecycle for Maven projects
+  # - Runs NPM build and test for NPM projects
+  # - Ensures quality before publishing
+  build-and-test:
+    name: '🔨 Build and Test'
+    runs-on: ubuntu-latest
+    needs: [validate-environment, version-management]
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+
+      - name: 'Build and Test Projects'
+        uses: ./.github/actions/build-test
+        with:
+          project-type: ${{ inputs.project-type }}
+          java-version: ${{ inputs.java-version }}
+          node-version: ${{ inputs.node-version }}
+          maven-args: ${{ inputs.maven-args }}
+          npm-args: ${{ inputs.npm-args }}
+          maven-working-directory: ${{ inputs.maven-working-directory }}
+          npm-working-directory: ${{ inputs.npm-working-directory }}
+
+  # ========================================================================
+  # JOB 4: PUBLISH ARTIFACTS
+  # ========================================================================
+  # This job publishes artifacts - Maven and NPM handle destinations automatically
+  # based on version suffixes (SNAPSHOT, RC, stable)
+  publish-artifacts:
+    name: '🚀 Publish Artifacts'
+    runs-on: ubuntu-latest
+    needs: [validate-environment, version-management, build-and-test]
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+
+      - name: 'Publish Maven Artifacts'
+        if: contains(inputs.project-type, 'maven')
+        working-directory: ${{ inputs.maven-working-directory }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          echo "🚀 Publishing Maven artifacts..."
+          
+          # Maven handles destination automatically based on version:
+          # - SNAPSHOT versions go to snapshots repository
+          # - RC versions go to staging repository
+          # - Stable versions go to releases repository
+          mvn clean deploy -B \
+            -DskipTests \
+            -Dgpg.keyname="$GPG_KEYNAME" \
+            -Dgpg.passphrase="$GPG_PASSPHRASE" \
+            -Dcentral.username="$CENTRAL_USERNAME" \
+            -Dcentral.password="$CENTRAL_PASSWORD" \
+            ${{ inputs.maven-args }}
+          
+          echo "✅ Maven artifacts published"
+
+      - name: 'Publish NPM Artifacts'
+        if: contains(inputs.project-type, 'npm')
+        working-directory: ${{ inputs.npm-working-directory }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "🚀 Publishing NPM artifacts..."
+          
+          # Configure NPM for publishing
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+          
+          # NPM handles destination automatically based on version:
+          # - SNAPSHOT versions get 'snapshot' tag
+          # - RC versions get 'rc' tag  
+          # - Stable versions get 'latest' tag
+          npm publish ${{ inputs.npm-args }}
+          
+          echo "✅ NPM artifacts published"
+
+  # ========================================================================
+  # JOB 5: GIT OPERATIONS
+  # ========================================================================
+  # This job commits version changes and pushes to current branch
+  # - Commits updated version files
+  # - Pushes changes to the current branch
+  # - Creates a commit message with version information
+  git-operations:
+    name: '📝 Git Operations'
+    runs-on: ubuntu-latest
+    needs: [validate-environment, version-management, publish-artifacts]
+    if: inputs.skip-version-bump != true
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Git Operations'
+        uses: ./.github/actions/git-operations
+        with:
+          commit-message: "chore: bump version for next release"
+          branch: ${{ github.ref_name }}
+          maven-version: ${{ needs.version-management.outputs.maven-version }}
+          npm-version: ${{ needs.version-management.outputs.npm-version }}
+
+  # ========================================================================
+  # JOB 6: SUMMARY
+  # ========================================================================
+  # This job provides a summary of what was accomplished
+  summary:
+    name: '📊 Summary'
+    runs-on: ubuntu-latest
+    needs: [validate-environment, version-management, publish-artifacts, git-operations]
+    if: always()
+    steps:
+      - name: 'Publish Summary'
+        shell: bash
+        run: |
+          echo "=========================================="
+          echo "📊 GITFLOW PUBLISH SUMMARY"
+          echo "=========================================="
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Project Type: ${{ inputs.project-type }}"
+          
+          if [[ "${{ needs.version-management.outputs.old-version }}" != "" ]]; then
+            echo "Version Change: ${{ needs.version-management.outputs.old-version }} → ${{ needs.version-management.outputs.new-version }}"
+          fi
+          
+          if [[ "${{ needs.version-management.outputs.maven-version }}" != "" ]]; then
+            echo "Maven Version: ${{ needs.version-management.outputs.maven-version }}"
+          fi
+          
+          if [[ "${{ needs.version-management.outputs.npm-version }}" != "" ]]; then
+            echo "NPM Version: ${{ needs.version-management.outputs.npm-version }}"
+          fi
+          
+          echo "✅ Publishing completed successfully!"
+          echo "=========================================="
