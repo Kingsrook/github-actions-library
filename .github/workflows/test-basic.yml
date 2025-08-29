@@ -1,0 +1,102 @@
+name: 'Basic Test Workflow'
+
+on:
+  workflow_call:
+    inputs:
+      project-type:
+        description: 'Type of project (maven, npm, or hybrid)'
+        required: true
+        type: string
+        default: 'hybrid'
+      java-version:
+        description: 'Java version to use'
+        required: false
+        type: string
+        default: '17'
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '18'
+      maven-working-directory:
+        description: 'Working directory for Maven project'
+        required: false
+        type: string
+        default: '.'
+      npm-working-directory:
+        description: 'Working directory for NPM project'
+        required: false
+        type: string
+        default: '.'
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+
+jobs:
+  validate-environment:
+    name: '🔍 Validate Environment'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Validate Environment & Secrets'
+        uses: ./.github/actions/validate-environment
+        with:
+          project-type: ${{ inputs.project-type }}
+          require-github-token: true
+          require-gpg: false
+          require-maven: ${{ contains(inputs.project-type, 'maven') }}
+          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+
+  test-maven:
+    name: '🧪 Test Maven'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    if: contains(inputs.project-type, 'maven')
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Java'
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          cache: 'maven'
+          cache-dependency-path: ${{ inputs.maven-working-directory }}/pom.xml
+
+      - name: 'Test Maven Project'
+        working-directory: ${{ inputs.maven-working-directory }}
+        run: |
+          echo "🧪 Testing Maven project..."
+          mvn clean test -B
+          echo "✅ Maven tests completed"
+
+  test-npm:
+    name: '🧪 Test NPM'
+    runs-on: ubuntu-latest
+    needs: validate-environment
+    if: contains(inputs.project-type, 'npm')
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+          cache-dependency-path: ${{ inputs.npm-working-directory }}/package-lock.json
+
+      - name: 'Test NPM Project'
+        working-directory: ${{ inputs.npm-working-directory }}
+        run: |
+          echo "🧪 Testing NPM project..."
+          npm ci
+          npm run lint
+          npm test
+          echo "✅ NPM tests completed"
