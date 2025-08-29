@@ -26,271 +26,209 @@
 #   8. Project Files - Validates presence of required project files
 # =============================================================================
 
-name: 'Validate Environment & Secrets'
-description: 'Validates all required environment variables, secrets, and configurations for CI/CD pipeline'
+name: 'Validate Environment'
+description: 'Validates all required secrets and configurations for CI/CD workflows'
 
 inputs:
   project-type:
     description: 'Type of project (maven, npm, or hybrid)'
     required: true
     default: 'hybrid'
-  require-github-token:
-    description: 'Whether GitHub token is required for this workflow'
-    required: false
-    default: 'true'
   require-gpg:
-    description: 'Whether GPG signing is required'
+    description: 'Whether GPG secrets are required'
     required: false
     default: 'true'
   require-maven:
-    description: 'Whether Maven Central publishing is required'
+    description: 'Whether Maven Central secrets are required'
     required: false
-    default: 'true'
+    default: 'false'
   require-npm:
-    description: 'Whether NPM publishing is required'
+    description: 'Whether NPM token is required'
     required: false
-    default: 'true'
+    default: 'false'
 
 runs:
   using: 'composite'
   steps:
-    # ========================================================================
-    # STEP 1: VALIDATION STARTED
-    # ========================================================================
-    # Displays comprehensive information about what will be validated
-    # based on the project type and requirements specified
     - name: '🔍 Environment Validation Started'
+      shell: bash
       run: |
         echo "=========================================="
         echo "🔍 ENVIRONMENT VALIDATION STARTED"
         echo "=========================================="
         echo "Project Type: ${{ inputs.project-type }}"
-        echo "GitHub Token Required: ${{ inputs.require-github-token }}"
-        echo "GPG Required: ${{ inputs.require-gpg }}"
-        echo "Maven Required: ${{ inputs.require-maven }}"
-        echo "NPM Required: ${{ inputs.require-npm }}"
+        echo "Require GPG: ${{ inputs.require-gpg }}"
+        echo "Require Maven: ${{ inputs.require-maven }}"
+        echo "Require NPM: ${{ inputs.require-npm }}"
         echo "=========================================="
-      shell: bash
 
-    # ========================================================================
-    # STEP 2: GITHUB TOKEN VALIDATION
-    # ========================================================================
-    # Validates that GitHub token validation is required
-    # Note: Actual token validation happens in the workflow, not in the action
-    - name: '✅ Check GitHub Token Requirement'
-      if: inputs.require-github-token == 'true'
-      run: |
-        echo "🔑 GitHub token validation is required"
-        echo "   Note: Token validation happens in the workflow context"
-        echo "✅ GitHub token requirement check passed"
-      shell: bash
-
-    # ========================================================================
-    # STEP 3: GPG CONFIGURATION VALIDATION
-    # ========================================================================
-    # Validates that GPG signing is required
-    # Note: Actual GPG validation happens in the workflow, not in the action
-    - name: '✅ Check GPG Configuration Requirement'
+    - name: '✅ Validate GPG Secrets'
       if: inputs.require-gpg == 'true'
-      run: |
-        echo "🔐 GPG signing validation is required"
-        echo "   Note: GPG validation happens in the workflow context"
-        echo "✅ GPG requirement check passed"
       shell: bash
-
-    # ========================================================================
-    # STEP 4: MAVEN CENTRAL CONFIGURATION VALIDATION
-    # ========================================================================
-    # Validates that Maven Central publishing is required
-    # Note: Actual Maven Central validation happens in the workflow, not in the action
-    - name: '✅ Check Maven Central Configuration Requirement'
-      if: inputs.require-maven == 'true'
       run: |
-        echo "📦 Maven Central publishing validation is required"
-        echo "   Note: Maven Central validation happens in the workflow context"
-        echo "✅ Maven Central requirement check passed"
-      shell: bash
-
-    # ========================================================================
-    # STEP 5: NPM CONFIGURATION VALIDATION
-    # ========================================================================
-    # Validates that NPM publishing is required
-    # Note: Actual NPM validation happens in the workflow, not in the action
-    - name: '✅ Check NPM Configuration Requirement'
-      if: inputs.require-npm == 'true'
-      run: |
-        echo "📦 NPM publishing validation is required"
-        echo "   Note: NPM validation happens in the workflow context"
-        echo "✅ NPM requirement check passed"
-      shell: bash
-
-    # ========================================================================
-    # STEP 6: REPOSITORY ACCESS VALIDATION
-    # ========================================================================
-    # Validates repository access and permissions by:
-    # - Testing access to the current repository
-    # - Displaying repository information
-    # This ensures the workflow has proper access to the repository
-    - name: '✅ Check Repository Access'
-      run: |
-        echo "🔐 Validating repository access..."
+        echo "🔐 Validating GPG configuration..."
         
-        # Check if we can access the repository using GitHub API
-        if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
-          echo "⚠️  WARNING: Cannot test repository access without GITHUB_TOKEN"
-        else
-          echo "🌐 Testing repository access..."
-          response=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}" 2>/dev/null || echo "FAILED")
-          
-          # Validate repository access
-          if [[ "$response" == "FAILED" ]] || [[ "$response" == *"Not Found"* ]]; then
-            echo "❌ ERROR: Cannot access repository ${{ github.repository }}"
-            exit 1
-          fi
-          
-          echo "✅ Repository access confirmed"
-          echo "   Repository: ${{ github.repository }}"
-          echo "   Default Branch: $(echo "$response" | jq -r '.default_branch // "unknown"')"
-        fi
-      shell: bash
-
-    # ========================================================================
-    # STEP 7: GIT CONFIGURATION VALIDATION
-    # ========================================================================
-    # Sets up and validates Git configuration by:
-    # - Setting Git identity for CI/CD operations
-    # - Verifying we're in a Git repository
-    # - Displaying repository information
-    # This ensures Git operations (commits, tags, pushes) work correctly
-    - name: '✅ Check Git Configuration'
-      run: |
-        echo "🔧 Validating Git configuration..."
-        
-        # Set Git identity for CI/CD operations
-        git config --global user.email "ci@kingsrook.com"
-        git config --global user.name "GitHub Actions CI"
-        
-        echo "✅ Git configuration set"
-        echo "   Email: ci@kingsrook.com"
-        echo "   Name: GitHub Actions CI"
-        
-        # Verify we're in a Git repository
-        if [ -d ".git" ]; then
-          echo "✅ Git repository detected"
-          echo "   Current branch: $(git branch --show-current)"
-          echo "   Remote origin: $(git remote get-url origin)"
-        else
-          echo "❌ ERROR: Not in a Git repository"
+        # Check GPG_PRIVATE_KEY_B64
+        if [ -z "${{ secrets.GPG_PRIVATE_KEY_B64 }}" ]; then
+          echo ""
+          echo "❌ CRITICAL ERROR: GPG_PRIVATE_KEY_B64 secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is required for GPG signing of artifacts."
+          echo "   You need to add it to your repository secrets."
+          echo ""
+          echo "📋 REQUIRED SECRETS:"
+          echo "   ✓ GPG_PRIVATE_KEY_B64 - Your GPG private key in base64 format"
+          echo "   ✓ GPG_KEYNAME - The email or key ID associated with your GPG key"
+          echo "   ✓ GPG_PASSPHRASE - The passphrase for your GPG key"
+          echo ""
+          echo "🔑 HOW TO GET YOUR GPG KEY:"
+          echo "   1. Export your GPG private key: gpg --export-secret-key --armor your-email@example.com"
+          echo "   2. Convert to base64: echo 'YOUR_PRIVATE_KEY_CONTENT' | base64 -w 0"
+          echo "   3. Add to repository secrets: Settings > Secrets and variables > Actions"
+          echo ""
           exit 1
         fi
-      shell: bash
+        
+        # Check GPG_KEYNAME
+        if [ -z "${{ secrets.GPG_KEYNAME }}" ]; then
+          echo ""
+          echo "❌ CRITICAL ERROR: GPG_KEYNAME secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   Add GPG_KEYNAME to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - The email address associated with your GPG key, OR"
+          echo "   - The key ID (e.g., 12345678ABCDEF12)"
+          echo ""
+          echo "🔑 HOW TO FIND YOUR KEY NAME:"
+          echo "   Run: gpg --list-secret-keys --keyid-format LONG"
+          echo "   Look for the email or key ID in the output"
+          echo ""
+          exit 1
+        fi
+        
+        # Check GPG_PASSPHRASE
+        if [ -z "${{ secrets.GPG_PASSPHRASE }}" ]; then
+          echo ""
+          echo "❌ CRITICAL ERROR: GPG_PASSPHRASE secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   Add GPG_PASSPHRASE to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - The passphrase you set when creating your GPG key"
+          echo "   - If you don't remember it, you may need to create a new GPG key"
+          echo ""
+          echo "🔑 HOW TO CREATE A NEW GPG KEY:"
+          echo "   1. Run: gpg --full-generate-key"
+          echo "   2. Choose RSA and RSA (default)"
+          echo "   3. Choose 4096 bits"
+          echo "   4. Set an expiration date"
+          echo "   5. Enter your name and email"
+          echo "   6. Set a passphrase (remember this!)"
+          echo ""
+          exit 1
+        fi
+        
+        echo "✅ GPG secrets are present"
+        echo "   Key Name: ${{ secrets.GPG_KEYNAME }}"
+        echo "   Private Key: [PRESENT]"
+        echo "   Passphrase: [PRESENT]"
 
-    # ========================================================================
-    # STEP 8: BUILD TOOLS VALIDATION
-    # ========================================================================
-    # Validates availability of required build tools by:
-    # - Checking Java and Maven availability (for Maven projects)
-    # - Checking Node.js and NPM availability (for NPM projects)
-    # - Displaying version information
-    # This ensures the build environment is properly configured
-    - name: '✅ Check Build Tools'
-      run: |
-        echo "🛠️  Validating build tools..."
-        
-        # Check Java/Maven availability for Maven projects
-        if [ "${{ inputs.require-maven }}" == "true" ]; then
-          if command -v java >/dev/null 2>&1; then
-            echo "✅ Java is available: $(java -version 2>&1 | head -n 1)"
-          else
-            echo "❌ ERROR: Java is not available"
-            exit 1
-          fi
-          
-          if command -v mvn >/dev/null 2>&1; then
-            echo "✅ Maven is available: $(mvn -version 2>&1 | head -n 1)"
-          else
-            echo "❌ ERROR: Maven is not available"
-            exit 1
-          fi
-        fi
-        
-        # Check Node.js/NPM availability for NPM projects
-        if [ "${{ inputs.require-npm }}" == "true" ]; then
-          if command -v node >/dev/null 2>&1; then
-            echo "✅ Node.js is available: $(node --version)"
-          else
-            echo "❌ ERROR: Node.js is not available"
-            exit 1
-          fi
-          
-          if command -v npm >/dev/null 2>&1; then
-            echo "✅ NPM is available: $(npm --version)"
-          else
-            echo "❌ ERROR: NPM is not available"
-            exit 1
-          fi
-        fi
-        
-        echo "✅ All required build tools are available"
+    - name: '✅ Validate Maven Central Secrets'
+      if: inputs.require-maven == 'true'
       shell: bash
+      run: |
+        echo "📦 Validating Maven Central configuration..."
+        
+        # Check CENTRAL_USERNAME
+        if [ -z "${{ secrets.CENTRAL_USERNAME }}" ]; then
+          echo ""
+          echo "❌ CRITICAL ERROR: CENTRAL_USERNAME secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is required for publishing to Maven Central."
+          echo "   You need to add it to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - Your Sonatype OSSRH username (usually your email)"
+          echo "   - This is the username you use to log into https://s01.oss.sonatype.org/"
+          echo ""
+          echo "🔑 HOW TO GET ACCESS:"
+          echo "   1. Go to https://s01.oss.sonatype.org/"
+          echo "   2. Click 'Sign Up' if you don't have an account"
+          echo "   3. Complete the registration process"
+          echo "   4. Add CENTRAL_USERNAME to repository secrets"
+          echo ""
+          exit 1
+        fi
+        
+        # Check CENTRAL_PASSWORD
+        if [ -z "${{ secrets.CENTRAL_PASSWORD }}" ]; then
+          echo ""
+          echo "❌ CRITICAL ERROR: CENTRAL_PASSWORD secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   Add CENTRAL_PASSWORD to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - Your Sonatype OSSRH password"
+          echo "   - This is the password you use to log into https://s01.oss.sonatype.org/"
+          echo ""
+          echo "🔑 HOW TO RESET PASSWORD:"
+          echo "   1. Go to https://s01.oss.sonatype.org/"
+          echo "   2. Click 'Forgot Password?'"
+          echo "   3. Follow the password reset process"
+          echo "   4. Add the new password to repository secrets"
+          echo ""
+          exit 1
+        fi
+        
+        echo "✅ Maven Central secrets are present"
+        echo "   Username: ${{ secrets.CENTRAL_USERNAME }}"
+        echo "   Password: [PRESENT]"
 
-    # ========================================================================
-    # STEP 9: PROJECT FILES VALIDATION
-    # ========================================================================
-    # Validates presence of required project files by:
-    # - Checking pom.xml for Maven projects
-    # - Checking package.json for NPM projects
-    # - Providing warnings for recommended files
-    # This ensures the project structure is correct
-    - name: '✅ Check Project Files'
-      run: |
-        echo "📁 Validating project files..."
-        
-        # Check Maven project files
-        if [ "${{ inputs.require-maven }}" == "true" ]; then
-          if [ -f "pom.xml" ]; then
-            echo "✅ pom.xml found"
-          else
-            echo "❌ ERROR: pom.xml not found (required for Maven projects)"
-            exit 1
-          fi
-        fi
-        
-        # Check NPM project files
-        if [ "${{ inputs.require-npm }}" == "true" ]; then
-          if [ -f "package.json" ]; then
-            echo "✅ package.json found"
-          else
-            echo "❌ ERROR: package.json not found (required for NPM projects)"
-            exit 1
-          fi
-          
-          if [ -f "tsconfig.json" ]; then
-            echo "✅ tsconfig.json found"
-          else
-            echo "⚠️  WARNING: tsconfig.json not found (recommended for TypeScript projects)"
-          fi
-        fi
-        
-        echo "✅ Project files validation complete"
+    - name: '✅ Validate NPM Token'
+      if: inputs.require-npm == 'true'
       shell: bash
+      run: |
+        echo "📦 Validating NPM configuration..."
+        
+        # Check NPM_TOKEN
+        if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
+          echo ""
+          echo "❌ CRITICAL ERROR: NPM_TOKEN secret is missing!"
+          echo ""
+          echo "🔧 HOW TO FIX:"
+          echo "   This secret is required for publishing to NPM registry."
+          echo "   You need to add it to your repository secrets."
+          echo ""
+          echo "📋 WHAT TO ADD:"
+          echo "   - Your NPM authentication token"
+          echo "   - This is NOT your NPM password"
+          echo ""
+          echo "🔑 HOW TO GET YOUR NPM TOKEN:"
+          echo "   1. Go to https://www.npmjs.com/"
+          echo "   2. Sign in to your account"
+          echo "   3. Click your profile picture > Access Tokens"
+          echo "   4. Click 'Generate New Token'"
+          echo "   5. Select 'Automation' token type"
+          echo "   6. Copy the token and add it to repository secrets"
+          echo ""
+          exit 1
+        fi
+        
+        echo "✅ NPM token is present"
+        echo "   Token: [PRESENT]"
 
-    # ========================================================================
-    # STEP 10: VALIDATION COMPLETE
-    # ========================================================================
-    # Final step that confirms all validations passed
-    # Provides clear success message and next steps
-    - name: '🎉 Environment Validation Complete'
+    - name: '✅ Environment Validation Complete'
+      shell: bash
       run: |
         echo "=========================================="
-        echo "🎉 ENVIRONMENT VALIDATION COMPLETE"
+        echo "✅ ENVIRONMENT VALIDATION COMPLETE"
         echo "=========================================="
-        echo "✅ All required secrets and configurations are present"
-        echo "✅ All authentication tests passed"
-        echo "✅ All build tools are available"
-        echo "✅ Project files are valid"
+        echo "All required secrets and configurations are present"
+        echo "Proceeding with workflow execution..."
         echo "=========================================="
-        echo "🚀 Ready to proceed with CI/CD pipeline!"
-        echo "=========================================="
-      shell: bash

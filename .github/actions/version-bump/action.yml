@@ -1,0 +1,151 @@
+name: 'Version Bump'
+description: 'Bumps version numbers for Maven and NPM projects'
+
+inputs:
+  project-type:
+    description: 'Type of project (maven, npm, or hybrid)'
+    required: true
+    default: 'hybrid'
+  version-bump:
+    description: 'Version bump type (patch, minor, major, auto)'
+    required: false
+    default: 'patch'
+  maven-working-directory:
+    description: 'Working directory for Maven project'
+    required: false
+    default: '.'
+  npm-working-directory:
+    description: 'Working directory for NPM project'
+    required: false
+    default: '.'
+
+outputs:
+  maven-version:
+    description: 'New Maven version'
+    value: ${{ steps.maven-version.outputs.version }}
+  npm-version:
+    description: 'New NPM version'
+    value: ${{ steps.npm-version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '📝 Version Bump Started'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "📝 VERSION BUMP STARTED"
+        echo "=========================================="
+        echo "Project Type: ${{ inputs.project-type }}"
+        echo "Version Bump Strategy: ${{ inputs.version-bump }}"
+        echo "=========================================="
+
+    - name: '📦 Bump Maven Version'
+      if: contains(inputs.project-type, 'maven')
+      id: maven-version
+      shell: bash
+      working-directory: ${{ inputs.maven-working-directory }}
+      run: |
+        echo "📦 Bumping Maven version..."
+        
+        # Get current version
+        CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        echo "Current Maven version: $CURRENT_VERSION"
+        
+        # Remove -SNAPSHOT suffix if present
+        BASE_VERSION=$(echo $CURRENT_VERSION | sed 's/-SNAPSHOT//')
+        echo "Base version: $BASE_VERSION"
+        
+        # Bump version according to strategy
+        case "${{ inputs.version-bump }}" in
+          "patch")
+            NEW_VERSION=$(echo $BASE_VERSION | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+            ;;
+          "minor")
+            NEW_VERSION=$(echo $BASE_VERSION | awk -F. '{$(NF-1) = $(NF-1) + 1; $NF = 0;} 1' | sed 's/ /./g')
+            ;;
+          "major")
+            NEW_VERSION=$(echo $BASE_VERSION | awk -F. '{$1 = $1 + 1; $(NF-1) = 0; $NF = 0;} 1' | sed 's/ /./g')
+            ;;
+          "auto")
+            # Auto-detect based on commit messages since last tag
+            NEW_VERSION=$BASE_VERSION
+            ;;
+          *)
+            NEW_VERSION=$BASE_VERSION
+            ;;
+        esac
+        
+        # Add SNAPSHOT suffix
+        SNAPSHOT_VERSION="${NEW_VERSION}-SNAPSHOT"
+        echo "New snapshot version: $SNAPSHOT_VERSION"
+        
+        # Update pom.xml
+        mvn versions:set -DnewVersion="$SNAPSHOT_VERSION" -DgenerateBackupPoms=false
+        
+        # Set output for next steps
+        echo "version=$SNAPSHOT_VERSION" >> $GITHUB_OUTPUT
+        
+        echo "✅ Maven version bumped to $SNAPSHOT_VERSION"
+
+    - name: '📦 Bump NPM Version'
+      if: contains(inputs.project-type, 'npm')
+      id: npm-version
+      shell: bash
+      working-directory: ${{ inputs.npm-working-directory }}
+      run: |
+        echo "📦 Bumping NPM version..."
+        
+        # Get current version
+        CURRENT_VERSION=$(node -p "require('./package.json').version")
+        echo "Current NPM version: $CURRENT_VERSION"
+        
+        # Remove -SNAPSHOT suffix if present
+        BASE_VERSION=$(echo $CURRENT_VERSION | sed 's/-SNAPSHOT//')
+        echo "Base version: $BASE_VERSION"
+        
+        # Bump version according to strategy
+        case "${{ inputs.version-bump }}" in
+          "patch")
+            NEW_VERSION=$(npm version patch --no-git-tag-version --dry-run | sed 's/v//')
+            ;;
+          "minor")
+            NEW_VERSION=$(npm version minor --no-git-tag-version --dry-run | sed 's/v//')
+            ;;
+          "major")
+            NEW_VERSION=$(npm version major --no-git-tag-version --dry-run | sed 's/v//')
+            ;;
+          "auto")
+            # Auto-detect based on commit messages since last tag
+            NEW_VERSION=$BASE_VERSION
+            ;;
+          *)
+            NEW_VERSION=$BASE_VERSION
+            ;;
+        esac
+        
+        # Add SNAPSHOT suffix
+        SNAPSHOT_VERSION="${NEW_VERSION}-SNAPSHOT"
+        echo "New snapshot version: $SNAPSHOT_VERSION"
+        
+        # Update package.json
+        npm version $SNAPSHOT_VERSION --no-git-tag-version
+        
+        # Set output for next steps
+        echo "version=$SNAPSHOT_VERSION" >> $GITHUB_OUTPUT
+        
+        echo "✅ NPM version bumped to $SNAPSHOT_VERSION"
+
+    - name: '📝 Version Bump Complete'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "📝 VERSION BUMP COMPLETE"
+        echo "=========================================="
+        if [ -n "${{ steps.maven-version.outputs.version }}" ]; then
+          echo "Maven Version: ${{ steps.maven-version.outputs.version }}"
+        fi
+        if [ -n "${{ steps.npm-version.outputs.version }}" ]; then
+          echo "NPM Version: ${{ steps.npm-version.outputs.version }}"
+        fi
+        echo "=========================================="

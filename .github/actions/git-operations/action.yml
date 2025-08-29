@@ -39,376 +39,95 @@
 # =============================================================================
 
 name: 'Git Operations'
-description: 'Performs common Git operations for CI/CD pipelines'
+description: 'Handles Git operations like committing and pushing changes'
 
 inputs:
-  operation:
-    description: 'Git operation to perform (tag, commit, push, tag-and-push, all)'
-    required: true
-    default: 'all'
-  tag-name:
-    description: 'Git tag name (for tag operations)'
-    required: false
-    default: ''
-  tag-message:
-    description: 'Message for the tag'
-    required: false
-    default: ''
   commit-message:
-    description: 'Message for the commit'
-    required: false
-    default: ''
-  push-changes:
-    description: 'Whether to push changes'
-    required: false
-    default: 'true'
-  force-push:
-    description: 'Whether to force push (use with caution)'
-    required: false
-    default: 'false'
+    description: 'Commit message to use'
+    required: true
+    default: 'chore: update versions'
   branch:
-    description: 'Target branch for operations'
+    description: 'Branch to push to'
+    required: true
+    default: 'develop'
+  maven-version:
+    description: 'Maven version for commit message'
     required: false
     default: ''
-  user-name:
-    description: 'Git user name'
+  npm-version:
+    description: 'NPM version for commit message'
     required: false
-    default: 'github-actions[bot]'
-  user-email:
-    description: 'Git user email'
-    required: false
-    default: 'github-actions[bot]@users.noreply.github.com'
-  add-pattern:
-    description: 'File pattern to add (default: all)'
-    required: false
-    default: '.'
-  create-branch:
-    description: 'Whether to create branch if it doesn\'t exist'
-    required: false
-    default: 'false'
-  checkout-branch:
-    description: 'Whether to checkout the target branch'
-    required: false
-    default: 'false'
-  fetch-depth:
-    description: 'Git fetch depth (0 for full history)'
-    required: false
-    default: '0'
-
-outputs:
-  tag-created:
-    description: 'Whether tag was created'
-    value: ${{ steps.git-ops.outputs.tag-created }}
-  commit-created:
-    description: 'Whether commit was created'
-    value: ${{ steps.git-ops.outputs.commit-created }}
-  changes-pushed:
-    description: 'Whether changes were pushed'
-    value: ${{ steps.git-ops.outputs.changes-pushed }}
-  branch-name:
-    description: 'Current branch name'
-    value: ${{ steps.git-ops.outputs.branch-name }}
-  last-commit:
-    description: 'Last commit hash'
-    value: ${{ steps.git-ops.outputs.last-commit }}
-  last-tag:
-    description: 'Last tag name'
-    value: ${{ steps.git-ops.outputs.last-tag }}
+    default: ''
 
 runs:
   using: 'composite'
   steps:
-    - name: '🔍 Initialize Git Operations'
-      id: git-ops
+    - name: '📝 Git Operations Started'
       shell: bash
       run: |
-        echo "🔍 Initializing Git operations..."
-        
-        # Set default values for outputs
-        echo "tag-created=false" >> $GITHUB_OUTPUT
-        echo "commit-created=false" >> $GITHUB_OUTPUT
-        echo "changes-pushed=false" >> $GITHUB_OUTPUT
-        echo "branch-name=" >> $GITHUB_OUTPUT
-        echo "last-commit=" >> $GITHUB_OUTPUT
-        echo "last-tag=" >> $GITHUB_OUTPUT
-        
-        # Get current branch
-        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        echo "branch-name=${CURRENT_BRANCH}" >> $GITHUB_OUTPUT
-        
-        # Get last commit
-        LAST_COMMIT=$(git rev-parse HEAD)
-        echo "last-commit=${LAST_COMMIT}" >> $GITHUB_OUTPUT
-        
-        # Get last tag
-        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-        echo "last-tag=${LAST_TAG}" >> $GITHUB_OUTPUT
-        
-        echo "✅ Git operations initialized"
-        echo "📋 Current branch: ${CURRENT_BRANCH}"
-        echo "📋 Last commit: ${LAST_COMMIT}"
-        echo "📋 Last tag: ${LAST_TAG}"
+        echo "=========================================="
+        echo "📝 GIT OPERATIONS STARTED"
+        echo "=========================================="
+        echo "Branch: ${{ inputs.branch }}"
+        echo "Commit Message: ${{ inputs.commit-message }}"
+        echo "=========================================="
 
-    - name: '🔧 Configure Git'
+    - name: '📝 Configure Git'
       shell: bash
       run: |
-        echo "🔧 Configuring Git..."
-        
-        # Configure Git user
-        git config user.name "${{ inputs.user-name }}"
-        git config user.email "${{ inputs.user-email }}"
-        
-        # Configure Git for CI/CD
-        git config --global --add safe.directory "."
-        
-        echo "✅ Git configured for user: ${{ inputs.user-name }} <${{ inputs.user-email }}>"
+        echo "📝 Configuring Git..."
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        echo "✅ Git configured"
 
-    - name: '📥 Fetch Repository'
-      if: inputs.fetch-depth != '0'
+    - name: '📝 Commit Changes'
       shell: bash
       run: |
-        echo "📥 Fetching repository..."
+        echo "📝 Committing changes..."
         
-        FETCH_DEPTH="${{ inputs.fetch-depth }}"
-        
-        if [ "$FETCH_DEPTH" != "0" ]; then
-          git fetch --depth="$FETCH_DEPTH"
-          echo "✅ Repository fetched with depth: $FETCH_DEPTH"
-        else
-          git fetch --unshallow
-          echo "✅ Full repository history fetched"
-        fi
-
-    - name: '🌿 Checkout Branch'
-      if: inputs.checkout-branch == 'true' && inputs.branch != ''
-      shell: bash
-      run: |
-        echo "🌿 Checking out branch..."
-        
-        TARGET_BRANCH="${{ inputs.branch }}"
-        CREATE_BRANCH="${{ inputs.create-branch }}"
-        
-        # Check if branch exists
-        if git show-ref --verify --quiet refs/heads/"$TARGET_BRANCH"; then
-          echo "✅ Branch exists: $TARGET_BRANCH"
-          git checkout "$TARGET_BRANCH"
-        elif [ "$CREATE_BRANCH" = "true" ]; then
-          echo "🌱 Creating new branch: $TARGET_BRANCH"
-          git checkout -b "$TARGET_BRANCH"
-        else
-          echo "❌ Branch not found: $TARGET_BRANCH"
-          echo "Set create-branch=true to create it automatically"
-          exit 1
-        fi
-        
-        echo "✅ Checked out branch: $TARGET_BRANCH"
-
-    - name: '📝 Stage Changes'
-      if: inputs.operation == 'commit' || inputs.operation == 'tag-and-push' || inputs.operation == 'all'
-      shell: bash
-      run: |
-        echo "📝 Staging changes..."
-        
-        ADD_PATTERN="${{ inputs.add-pattern }}"
-        
-        # Add files according to pattern
-        if [ "$ADD_PATTERN" = "." ]; then
-          git add .
-          echo "✅ All changes staged"
-        else
-          git add "$ADD_PATTERN"
-          echo "✅ Changes staged for pattern: $ADD_PATTERN"
-        fi
-        
-        # Show staged changes
-        echo "📋 Staged changes:"
-        git status --porcelain
-
-    - name: '📝 Create Commit'
-      if: inputs.operation == 'commit' || inputs.operation == 'tag-and-push' || inputs.operation == 'all'
-      shell: bash
-      run: |
-        echo "📝 Creating commit..."
-        
-        COMMIT_MESSAGE="${{ inputs.commit-message }}"
+        # Add all changes
+        git add -A
         
         # Check if there are changes to commit
-        if [ -n "$(git status --porcelain)" ]; then
-          if [ -z "$COMMIT_MESSAGE" ]; then
-            COMMIT_MESSAGE="📊 Update from GitHub Actions"
-          fi
-          
-          git commit -m "$COMMIT_MESSAGE"
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ Commit created: $COMMIT_MESSAGE"
-            
-            # Update output
-            echo "commit-created=true" >> $GITHUB_OUTPUT
-            
-            # Get new commit hash
-            NEW_COMMIT=$(git rev-parse HEAD)
-            echo "last-commit=${NEW_COMMIT}" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Failed to create commit"
-            exit 1
-          fi
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
         else
-          echo "ℹ️ No changes to commit"
+          # Create enhanced commit message
+          COMMIT_MSG="${{ inputs.commit-message }}"
+          
+          if [ -n "${{ inputs.maven-version }}" ]; then
+            COMMIT_MSG="$COMMIT_MSG [Maven: ${{ inputs.maven-version }}]"
+          fi
+          
+          if [ -n "${{ inputs.npm-version }}" ]; then
+            COMMIT_MSG="$COMMIT_MSG [NPM: ${{ inputs.npm-version }}]"
+          fi
+          
+          # Commit changes
+          git commit -m "$COMMIT_MSG"
+          echo "✅ Changes committed: $COMMIT_MSG"
         fi
 
-    - name: '🏷️ Create Tag'
-      if: inputs.operation == 'tag' || inputs.operation == 'tag-and-push' || inputs.operation == 'all'
+    - name: '📝 Push to Branch'
       shell: bash
       run: |
-        echo "🏷️ Creating tag..."
+        echo "📝 Pushing to ${{ inputs.branch }} branch..."
         
-        TAG_NAME="${{ inputs.tag-name }}"
-        TAG_MESSAGE="${{ inputs.tag-message }}"
-        
-        if [ -z "$TAG_NAME" ]; then
-          echo "❌ tag-name is required for tag operations"
-          exit 1
-        fi
-        
-        # Check if tag already exists
-        if git tag -l | grep -q "^$TAG_NAME$"; then
-          echo "⚠️ Tag already exists: $TAG_NAME"
-          
-          # Force update tag if it's the same commit
-          if [ "${{ inputs.force-push }}" = "true" ]; then
-            echo "🔄 Force updating existing tag..."
-            git tag -d "$TAG_NAME"
-            git push origin ":refs/tags/$TAG_NAME" 2>/dev/null || true
-          else
-            echo "❌ Tag exists and force-push is disabled"
-            exit 1
-          fi
-        fi
-        
-        # Create tag
-        if [ -n "$TAG_MESSAGE" ]; then
-          git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
+        # Check if we're on the target branch
+        CURRENT_BRANCH=$(git branch --show-current)
+        if [ "$CURRENT_BRANCH" = "${{ inputs.branch }}" ]; then
+          git push origin ${{ inputs.branch }}
+          echo "✅ Changes pushed to ${{ inputs.branch }} branch"
         else
-          git tag "$TAG_NAME"
-        fi
-        
-        if [ $? -eq 0 ]; then
-          echo "✅ Tag created: $TAG_NAME"
-          
-          # Update output
-          echo "tag-created=true" >> $GITHUB_OUTPUT
-          echo "last-tag=${TAG_NAME}" >> $GITHUB_OUTPUT
-        else
-          echo "❌ Failed to create tag"
-          exit 1
+          echo "⚠️  Not on ${{ inputs.branch }} branch, skipping push"
+          echo "Current branch: $CURRENT_BRANCH"
         fi
 
-    - name: '📤 Push Changes'
-      if: inputs.push-changes == 'true'
+    - name: '📝 Git Operations Complete'
       shell: bash
       run: |
-        echo "📤 Pushing changes..."
-        
-        FORCE_PUSH="${{ inputs.force-push }}"
-        TARGET_BRANCH="${{ inputs.branch }}"
-        
-        # Determine what to push
-        PUSH_COMMANDS=()
-        
-        # Push commits if we're on a branch
-        if [ -n "$TARGET_BRANCH" ]; then
-          if [ "$FORCE_PUSH" = "true" ]; then
-            PUSH_COMMANDS+=("git push origin $TARGET_BRANCH --force")
-          else
-            PUSH_COMMANDS+=("git push origin $TARGET_BRANCH")
-          fi
-        else
-          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-          if [ "$FORCE_PUSH" = "true" ]; then
-            PUSH_COMMANDS+=("git push origin $CURRENT_BRANCH --force")
-          else
-            PUSH_COMMANDS+=("git push origin $CURRENT_BRANCH")
-          fi
-        fi
-        
-        # Push tags if we created any
-        if [ "${{ steps.git-ops.outputs.tag-created }}" = "true" ]; then
-          TAG_NAME="${{ inputs.tag-name }}"
-          if [ "$FORCE_PUSH" = "true" ]; then
-            PUSH_COMMANDS+=("git push origin $TAG_NAME --force")
-          else
-            PUSH_COMMANDS+=("git push origin $TAG_NAME")
-          fi
-        fi
-        
-        # Execute push commands
-        PUSH_SUCCESS="true"
-        for cmd in "${PUSH_COMMANDS[@]}"; do
-          echo "📤 Executing: $cmd"
-          eval "$cmd"
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ Push successful: $cmd"
-          else
-            echo "❌ Push failed: $cmd"
-            PUSH_SUCCESS="false"
-          fi
-        done
-        
-        if [ "$PUSH_SUCCESS" = "true" ]; then
-          echo "✅ All changes pushed successfully"
-          
-          # Update output
-          echo "changes-pushed=true" >> $GITHUB_OUTPUT
-        else
-          echo "❌ Some pushes failed"
-          echo "changes-pushed=false" >> $GITHUB_OUTPUT
-          exit 1
-        fi
-
-    - name: '🔍 Verify Git State'
-      shell: bash
-      run: |
-        echo "🔍 Verifying Git state..."
-        
-        echo "📋 Current branch: $(git rev-parse --abbrev-ref HEAD)"
-        echo "📋 Last commit: $(git rev-parse HEAD)"
-        echo "📋 Last commit message: $(git log -1 --pretty=%B)"
-        echo "📋 Working directory status:"
-        git status --porcelain
-        
-        if [ "${{ steps.git-ops.outputs.tag-created }}" = "true" ]; then
-          echo "📋 Latest tag: ${{ inputs.tag-name }}"
-        fi
-        
-        echo "📋 Remote branches:"
-        git branch -r | head -10
-
-    - name: '📋 Git Operations Summary'
-      shell: bash
-      run: |
-        echo "📋 Git Operations Summary"
-        echo "========================="
-        echo "Operation: ${{ inputs.operation }}"
-        echo "Tag Created: ${{ steps.git-ops.outputs.tag-created }}"
-        echo "Commit Created: ${{ steps.git-ops.outputs.commit-created }}"
-        echo "Changes Pushed: ${{ steps.git-ops.outputs.changes-pushed }}"
-        echo "Branch Name: ${{ steps.git-ops.outputs.branch-name }}"
-        echo "Last Commit: ${{ steps.git-ops.outputs.last-commit }}"
-        echo "Last Tag: ${{ steps.git-ops.outputs.last-tag }}"
-        echo "Tag Name: ${{ inputs.tag-name || 'N/A' }}"
-        echo "Tag Message: ${{ inputs.tag-message || 'N/A' }}"
-        echo "Commit Message: ${{ inputs.commit-message || 'N/A' }}"
-        echo "Push Changes: ${{ inputs.push-changes }}"
-        echo "Force Push: ${{ inputs.force-push }}"
-        echo "Target Branch: ${{ inputs.branch || 'N/A' }}"
-        echo "User Name: ${{ inputs.user-name }}"
-        echo "User Email: ${{ inputs.user-email }}"
-        echo "Add Pattern: ${{ inputs.add-pattern }}"
-        echo "Create Branch: ${{ inputs.create-branch }}"
-        echo "Checkout Branch: ${{ inputs.checkout-branch }}"
-        echo "Fetch Depth: ${{ inputs.fetch-depth }}"
-        
-        echo ""
-        echo "🎉 Git operations completed successfully!"
+        echo "=========================================="
+        echo "📝 GIT OPERATIONS COMPLETE"
+        echo "=========================================="
+        echo "All Git operations completed successfully"
+        echo "=========================================="

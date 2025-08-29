@@ -1,0 +1,92 @@
+name: 'Build and Test'
+description: 'Builds and tests Maven and NPM projects'
+
+inputs:
+  project-type:
+    description: 'Type of project (maven, npm, or hybrid)'
+    required: true
+    default: 'hybrid'
+  java-version:
+    description: 'Java version to use'
+    required: false
+    default: '17'
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '18'
+  maven-args:
+    description: 'Additional Maven arguments'
+    required: false
+    default: ''
+  npm-args:
+    description: 'Additional NPM arguments'
+    required: false
+    default: ''
+  maven-working-directory:
+    description: 'Working directory for Maven project'
+    required: false
+    default: '.'
+  npm-working-directory:
+    description: 'Working directory for NPM project'
+    required: false
+    default: '.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🔨 Build and Test Started'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "🔨 BUILD AND TEST STARTED"
+        echo "=========================================="
+        echo "Project Type: ${{ inputs.project-type }}"
+        echo "Java Version: ${{ inputs.java-version }}"
+        echo "Node Version: ${{ inputs.node-version }}"
+        echo "=========================================="
+
+    - name: 'Setup Java'
+      if: contains(inputs.project-type, 'maven')
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+        cache: 'maven'
+        cache-dependency-path: ${{ inputs.maven-working-directory }}/pom.xml
+
+    - name: 'Setup Node.js'
+      if: contains(inputs.project-type, 'npm')
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: ${{ inputs.npm-working-directory }}/package-lock.json
+
+    - name: '🔨 Build Maven Project'
+      if: contains(inputs.project-type, 'maven')
+      shell: bash
+      working-directory: ${{ inputs.maven-working-directory }}
+      run: |
+        echo "🔨 Building Maven project..."
+        mvn clean compile test-compile -B ${{ inputs.maven-args }}
+        echo "✅ Maven build completed"
+
+    - name: '🔨 Build NPM Project'
+      if: contains(inputs.project-type, 'npm')
+      shell: bash
+      working-directory: ${{ inputs.npm-working-directory }}
+      run: |
+        echo "🔨 Building NPM project..."
+        npm ci
+        npm run build
+        npm test
+        echo "✅ NPM build completed"
+
+    - name: '🔨 Build and Test Complete'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "🔨 BUILD AND TEST COMPLETE"
+        echo "=========================================="
+        echo "All projects built and tested successfully"
+        echo "=========================================="

@@ -1,0 +1,52 @@
+name: 'Setup GPG'
+description: 'Sets up GPG environment for artifact signing'
+
+inputs:
+  keyname:
+    description: 'GPG key name/email to use'
+    required: true
+  passphrase:
+    description: 'GPG passphrase'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🔐 Setup GPG Environment'
+      shell: bash
+      run: |
+        echo "🔐 Setting up GPG environment..."
+        
+        # Create GPG configuration directory
+        mkdir -p ~/.gnupg
+        chmod 700 ~/.gnupg
+        
+        # Configure GPG
+        echo "use-agent" >> ~/.gnupg/gpg.conf
+        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+        chmod 600 ~/.gnupg/gpg.conf
+        
+        # Import GPG private key
+        echo "${{ secrets.GPG_PRIVATE_KEY_B64 }}" | base64 -d | gpg --import
+        
+        # Start GPG agent
+        gpg-agent --daemon
+        
+        echo "✅ GPG environment setup complete"
+        echo "   Key Name: ${{ inputs.keyname }}"
+        echo "   Passphrase: [CONFIGURED]"
+
+    - name: '🔐 Test GPG Configuration'
+      shell: bash
+      run: |
+        echo "🔐 Testing GPG configuration..."
+        
+        # Test GPG signing
+        echo "test" | gpg --clearsign --batch --passphrase "${{ inputs.passphrase }}" --local-user "${{ inputs.keyname }}" 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+          echo "✅ GPG signing test successful"
+        else
+          echo "❌ GPG signing test failed"
+          exit 1
+        fi

@@ -1,0 +1,131 @@
+name: 'Publish Artifacts'
+description: 'Publishes artifacts to Maven Central and NPM registries'
+
+inputs:
+  project-type:
+    description: 'Type of project (maven, npm, or hybrid)'
+    required: true
+    default: 'hybrid'
+  maven-working-directory:
+    description: 'Working directory for Maven project'
+    required: false
+    default: '.'
+  npm-working-directory:
+    description: 'Working directory for NPM project'
+    required: false
+    default: '.'
+  maven-args:
+    description: 'Additional Maven arguments'
+    required: false
+    default: ''
+  npm-args:
+    description: 'Additional NPM arguments'
+    required: false
+    default: ''
+  publish-type:
+    description: 'Type of publish (snapshot, rc, release)'
+    required: true
+    default: 'snapshot'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: '🚀 Publish Artifacts Started'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "🚀 PUBLISH ARTIFACTS STARTED"
+        echo "=========================================="
+        echo "Project Type: ${{ inputs.project-type }}"
+        echo "Publish Type: ${{ inputs.publish-type }}"
+        echo "=========================================="
+
+    - name: '🔐 Setup GPG for Publishing'
+      if: contains(inputs.project-type, 'maven') || contains(inputs.project-type, 'npm')
+      uses: ./.github/actions/setup-gpg
+      with:
+        keyname: ${{ secrets.GPG_KEYNAME }}
+        passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+    - name: '🚀 Publish Maven Artifacts'
+      if: contains(inputs.project-type, 'maven')
+      shell: bash
+      working-directory: ${{ inputs.maven-working-directory }}
+      env:
+        GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+        CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+      run: |
+        echo "🚀 Publishing Maven artifacts..."
+        
+        case "${{ inputs.publish-type }}" in
+          "snapshot")
+            echo "📦 Publishing Maven snapshot..."
+            mvn clean deploy -B \
+              -DskipTests \
+              -Dgpg.keyname="$GPG_KEYNAME" \
+              -Dgpg.passphrase="$GPG_PASSPHRASE" \
+              -Dcentral.username="$CENTRAL_USERNAME" \
+              -Dcentral.password="$CENTRAL_PASSWORD" \
+              ${{ inputs.maven-args }}
+            ;;
+          "rc"|"release")
+            echo "📦 Publishing Maven release..."
+            mvn clean deploy -B \
+              -DskipTests \
+              -Dgpg.keyname="$GPG_KEYNAME" \
+              -Dgpg.passphrase="$GPG_PASSPHRASE" \
+              -Dcentral.username="$CENTRAL_USERNAME" \
+              -Dcentral.password="$CENTRAL_PASSWORD" \
+              ${{ inputs.maven-args }}
+            ;;
+          *)
+            echo "❌ Unknown publish type: ${{ inputs.publish-type }}"
+            exit 1
+            ;;
+        esac
+        
+        echo "✅ Maven artifacts published"
+
+    - name: '🚀 Publish NPM Artifacts'
+      if: contains(inputs.project-type, 'npm')
+      shell: bash
+      working-directory: ${{ inputs.npm-working-directory }}
+      env:
+        NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      run: |
+        echo "🚀 Publishing NPM artifacts..."
+        
+        # Configure NPM for publishing
+        echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+        
+        case "${{ inputs.publish-type }}" in
+          "snapshot")
+            echo "📦 Publishing NPM snapshot..."
+            npm publish --tag snapshot ${{ inputs.npm-args }}
+            ;;
+          "rc")
+            echo "📦 Publishing NPM release candidate..."
+            npm publish --tag rc ${{ inputs.npm-args }}
+            ;;
+          "release")
+            echo "📦 Publishing NPM release..."
+            npm publish --tag latest ${{ inputs.npm-args }}
+            ;;
+          *)
+            echo "❌ Unknown publish type: ${{ inputs.publish-type }}"
+            exit 1
+            ;;
+        esac
+        
+        echo "✅ NPM artifacts published"
+
+    - name: '🚀 Publish Artifacts Complete'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "🚀 PUBLISH ARTIFACTS COMPLETE"
+        echo "=========================================="
+        echo "All artifacts published successfully"
+        echo "=========================================="
