@@ -76,9 +76,6 @@ on:
         default: false
         type: boolean
     secrets:
-      GITHUB_TOKEN:
-        required: true
-        description: 'GitHub token for API access'
       GPG_PRIVATE_KEY_B64:
         required: true
         description: 'Base64 encoded GPG private key'

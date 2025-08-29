@@ -46,8 +46,7 @@ on:
         type: string
         default: '18'
     secrets:
-      GITHUB_TOKEN:
-        required: true
+
       GPG_PRIVATE_KEY_B64:
         required: true
       GPG_KEYNAME:
