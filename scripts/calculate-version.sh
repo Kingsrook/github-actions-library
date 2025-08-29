@@ -33,23 +33,30 @@ NC='\033[0m' # No Color
 
 # Logging functions
 log_info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo -e "${BLUE}ℹ️  $1${NC}"
+    fi
 }
 
 log_success() {
-    echo -e "${GREEN}✅ $1${NC}"
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo -e "${GREEN}✅ $1${NC}"
+    fi
 }
 
 log_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo -e "${YELLOW}⚠️  $1${NC}"
+    fi
 }
 
 log_error() {
-    echo -e "${RED}❌ $1${NC}"
+    # Always show errors, even in JSON mode
+    echo -e "${RED}❌ $1${NC}" >&2
 }
 
 log_debug() {
-    if [[ "$VERBOSE" == "true" ]]; then
+    if [[ "$VERBOSE" == "true" ]] && [[ "$OUTPUT_FORMAT" != "json" ]]; then
         echo -e "${BLUE}🔍 $1${NC}"
     fi
 }
@@ -276,17 +283,29 @@ main() {
     log_info "Dry run: $DRY_RUN"
     log_info "Verbose: $VERBOSE"
     log_info "Output format: $OUTPUT_FORMAT"
-    echo ""
+    
+    # Only add extra newlines in non-JSON mode
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo ""
+    fi
     
     # Extract version components
     extract_version_parts "$CURRENT_VERSION"
     log_info "Version components: MAJOR=$MAJOR, MINOR=$MINOR, PATCH=$PATCH"
-    echo ""
+    
+    # Only add extra newlines in non-JSON mode
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo ""
+    fi
     
     # Calculate next version
     calculate_next_version "$CURRENT_BRANCH"
     log_info "Calculated next version: $NEW_VERSION"
-    echo ""
+    
+    # Only add extra newlines in non-JSON mode
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo ""
+    fi
     
     # Set the version if it's different
     if [[ "$NEW_VERSION" != "$CURRENT_VERSION" ]]; then
@@ -294,7 +313,7 @@ main() {
         set_version "$NEW_VERSION"
         
         # Show git diff
-        if [[ "$VERBOSE" == "true" ]]; then
+        if [[ "$VERBOSE" == "true" ]] && [[ "$OUTPUT_FORMAT" != "json" ]]; then
             echo ""
             log_info "Changes made:"
             git diff "$POM_FILE" || true
@@ -306,8 +325,11 @@ main() {
     # Output results
     output_results "$CURRENT_VERSION" "$NEW_VERSION" "$CURRENT_BRANCH"
     
-    echo ""
-    log_success "=== Version calculation complete ==="
+    # Only add extra newlines in non-JSON mode
+    if [[ "$OUTPUT_FORMAT" != "json" ]]; then
+        echo ""
+        log_success "=== Version calculation complete ==="
+    fi
 }
 
 # Run main function
