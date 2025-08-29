@@ -55,6 +55,16 @@ on:
         required: false
         type: string
         default: ''
+      maven-working-directory:
+        description: 'Working directory for Maven project'
+        required: false
+        type: string
+        default: '.'
+      npm-working-directory:
+        description: 'Working directory for NPM project'
+        required: false
+        type: string
+        default: '.'
     secrets:
       GITHUB_TOKEN:
         required: true
@@ -132,6 +142,7 @@ jobs:
           java-version: ${{ inputs.java-version }}
           distribution: 'temurin'
           cache: 'maven'
+          cache-dependency-path: ${{ inputs.maven-working-directory }}/pom.xml
 
       # ====================================================================
       # STEP 3: SETUP NODE.JS (NPM PROJECTS)
@@ -145,6 +156,7 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
+          cache-dependency-path: ${{ inputs.npm-working-directory }}/package-lock.json
 
       # ====================================================================
       # STEP 4: TEST MAVEN PROJECT
@@ -155,6 +167,7 @@ jobs:
       # - Fails fast if any tests fail
       - name: 'Test Maven Project'
         if: matrix.project == 'maven'
+        working-directory: ${{ inputs.maven-working-directory }}
         run: |
           echo "🧪 Testing Maven project..."
           mvn clean test -B ${{ inputs.maven-args }}
@@ -170,6 +183,7 @@ jobs:
       # - Generates coverage reports
       - name: 'Test NPM Project'
         if: matrix.project == 'npm'
+        working-directory: ${{ inputs.npm-working-directory }}
         run: |
           echo "🧪 Testing NPM project..."
           npm ci
@@ -189,7 +203,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: maven-test-results
-          path: target/surefire-reports/
+          path: ${{ inputs.maven-working-directory }}/target/surefire-reports/
           if-no-files-found: warn
 
       # ====================================================================
@@ -204,5 +218,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-coverage-reports
-          path: coverage/
+          path: ${{ inputs.npm-working-directory }}/coverage/
           if-no-files-found: warn
