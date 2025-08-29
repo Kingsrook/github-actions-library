@@ -104,13 +104,169 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 'Validate Environment & Secrets'
-        uses: ./.github/actions/validate-environment
-        with:
-          project-type: ${{ inputs.project-type }}
-          require-gpg: true
-          require-maven: ${{ contains(inputs.project-type, 'maven') }}
-          require-npm: ${{ contains(inputs.project-type, 'npm') }}
+      - name: '🔍 Environment Validation Started'
+        run: |
+          echo "=========================================="
+          echo "🔍 ENVIRONMENT VALIDATION STARTED"
+          echo "=========================================="
+          echo "Project Type: ${{ inputs.project-type }}"
+          echo "=========================================="
+
+      - name: '✅ Validate GPG Secrets'
+        shell: bash
+        run: |
+          echo "🔐 Validating GPG configuration..."
+          
+          # Check GPG_PRIVATE_KEY_B64
+          if [ -z "${{ secrets.GPG_PRIVATE_KEY_B64 }}" ]; then
+            echo ""
+            echo "❌ CRITICAL ERROR: GPG_PRIVATE_KEY_B64 secret is missing!"
+            echo ""
+            echo "🔧 HOW TO FIX:"
+            echo "   This secret is required for GPG signing of artifacts."
+            echo "   You need to add it to your repository secrets."
+            echo ""
+            echo "📋 REQUIRED SECRETS:"
+            echo "   ✓ GPG_PRIVATE_KEY_B64 - Your GPG private key in base64 format"
+            echo "   ✓ GPG_KEYNAME - The email or key ID associated with your GPG key"
+            echo "   ✓ GPG_PASSPHRASE - The passphrase for your GPG key"
+            echo ""
+            echo "🔑 HOW TO GET YOUR GPG KEY:"
+            echo "   1. Export your GPG private key: gpg --export-secret-key --armor your-email@example.com"
+            echo "   2. Convert to base64: echo 'YOUR_PRIVATE_KEY_CONTENT' | base64 -w 0"
+            echo "   3. Add to repository secrets: Settings > Secrets and variables > Actions"
+            echo ""
+            exit 1
+          fi
+          
+          # Check GPG_KEYNAME
+          if [ -z "${{ secrets.GPG_KEYNAME }}" ]; then
+            echo ""
+            echo "❌ CRITICAL ERROR: GPG_KEYNAME secret is missing!"
+            echo ""
+            echo "🔧 HOW TO FIX:"
+            echo "   Add GPG_KEYNAME to your repository secrets."
+            echo ""
+            echo "📋 REQUIRED SECRETS:"
+            echo "   ✓ GPG_KEYNAME - The email or key ID associated with your GPG key"
+            echo ""
+            echo "🔑 HOW TO GET YOUR GPG KEYNAME:"
+            echo "   1. List your GPG keys: gpg --list-secret-keys"
+            echo "   2. Use the email or key ID from the output"
+            echo "   3. Add to repository secrets: Settings > Secrets and variables > Actions"
+            echo ""
+            exit 1
+          fi
+          
+          # Check GPG_PASSPHRASE
+          if [ -z "${{ secrets.GPG_PASSPHRASE }}" ]; then
+            echo ""
+            echo "❌ CRITICAL ERROR: GPG_PASSPHRASE secret is missing!"
+            echo ""
+            echo "🔧 HOW TO FIX:"
+            echo "   Add GPG_PASSPHRASE to your repository secrets."
+            echo ""
+            echo "📋 REQUIRED SECRETS:"
+            echo "   ✓ GPG_PASSPHRASE - The passphrase for your GPG key"
+            echo ""
+            echo "🔑 HOW TO GET YOUR GPG PASSPHRASE:"
+            echo "   1. This is the passphrase you set when creating your GPG key"
+            echo "   2. Add to repository secrets: Settings > Secrets and variables > Actions"
+            echo ""
+            exit 1
+          fi
+          
+          echo "✅ GPG secrets validation passed!"
+
+      - name: '✅ Validate Maven Central Secrets'
+        if: contains(inputs.project-type, 'maven')
+        shell: bash
+        run: |
+          echo "📦 Validating Maven Central configuration..."
+          
+          # Check CENTRAL_USERNAME
+          if [ -z "${{ secrets.CENTRAL_USERNAME }}" ]; then
+            echo ""
+            echo "❌ CRITICAL ERROR: CENTRAL_USERNAME secret is missing!"
+            echo ""
+            echo "🔧 HOW TO FIX:"
+            echo "   This secret is required for publishing to Maven Central."
+            echo "   You need to add it to your repository secrets."
+            echo ""
+            echo "📋 REQUIRED SECRETS:"
+            echo "   ✓ CENTRAL_USERNAME - Your Sonatype OSSRH username"
+            echo "   ✓ CENTRAL_PASSWORD - Your Sonatype OSSRH password"
+            echo ""
+            echo "🔑 HOW TO GET YOUR MAVEN CENTRAL CREDENTIALS:"
+            echo "   1. Go to https://oss.sonatype.org/"
+            echo "   2. Sign in with your account"
+            echo "   3. Get your username and password"
+            echo "   4. Add to repository secrets: Settings > Secrets and variables > Actions"
+            echo ""
+            exit 1
+          fi
+          
+          # Check CENTRAL_PASSWORD
+          if [ -z "${{ secrets.CENTRAL_PASSWORD }}" ]; then
+            echo ""
+            echo "❌ CRITICAL ERROR: CENTRAL_PASSWORD secret is missing!"
+            echo ""
+            echo "🔧 HOW TO FIX:"
+            echo "   Add CENTRAL_PASSWORD to your repository secrets."
+            echo ""
+            echo "📋 REQUIRED SECRETS:"
+            echo "   ✓ CENTRAL_PASSWORD - Your Sonatype OSSRH password"
+            echo ""
+            echo "🔑 HOW TO GET YOUR MAVEN CENTRAL CREDENTIALS:"
+            echo "   1. Go to https://oss.sonatype.org/"
+            echo "   2. Sign in with your account"
+            echo "   3. Get your username and password"
+            echo "   4. Add to repository secrets: Settings > Secrets and variables > Actions"
+            echo ""
+            exit 1
+          fi
+          
+          echo "✅ Maven Central secrets validation passed!"
+
+      - name: '✅ Validate NPM Token'
+        if: contains(inputs.project-type, 'npm')
+        shell: bash
+        run: |
+          echo "📦 Validating NPM configuration..."
+          
+          # Check NPM_TOKEN
+          if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
+            echo ""
+            echo "❌ CRITICAL ERROR: NPM_TOKEN secret is missing!"
+            echo ""
+            echo "🔧 HOW TO FIX:"
+            echo "   This secret is required for publishing to NPM."
+            echo "   You need to add it to your repository secrets."
+            echo ""
+            echo "📋 REQUIRED SECRETS:"
+            echo "   ✓ NPM_TOKEN - Your NPM authentication token"
+            echo ""
+            echo "🔑 HOW TO GET YOUR NPM TOKEN:"
+            echo "   1. Go to https://www.npmjs.com/"
+            echo "   2. Sign in to your account"
+            echo "   3. Go to Access Tokens: https://www.npmjs.com/settings/tokens"
+            echo "   4. Create a new token with 'Automation' type"
+            echo "   5. Copy the token and add to repository secrets"
+            echo "   6. Add to repository secrets: Settings > Secrets and variables > Actions"
+            echo ""
+            exit 1
+          fi
+          
+          echo "✅ NPM token validation passed!"
+
+      - name: '✅ Environment Validation Complete'
+        run: |
+          echo "=========================================="
+          echo "✅ ENVIRONMENT VALIDATION COMPLETE"
+          echo "=========================================="
+          echo "All required secrets and configurations are present!"
+          echo "Proceeding with build and publish..."
+          echo "=========================================="
 
   # ========================================================================
   # JOB 2: VERSION MANAGEMENT
