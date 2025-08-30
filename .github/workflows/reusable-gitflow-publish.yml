@@ -313,6 +313,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management]
     steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Download Modified Files'
+        uses: actions/download-artifact@v4
+        with:
+          name: modified-files
+          path: .
+
       - name: 'Build and Test Projects'
         uses: Kingsrook/github-actions-library/.github/actions/build-test@main
         with:
