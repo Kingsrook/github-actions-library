@@ -1,303 +1,155 @@
 # =============================================================================
 # VERSION MANAGEMENT COMPOSITE ACTION
 # =============================================================================
-# This action provides standardized version management for Maven and NPM projects.
-# It handles version calculation, updating, and synchronization between build systems.
+# This action handles version management using the calculate-version.sh script
+# - Downloads the script from the library repository
+# - Runs version calculation for Maven and/or NPM projects
+# - Sets outputs for use by calling workflows
 #
 # USAGE:
-#   - name: '📊 Manage Versions'
+#   - name: 'Version Management'
 #     uses: ./.github/actions/version-management
 #     with:
-#       project-type: 'hybrid'
-#       version: '1.2.3'
-#       operation: 'set'
-#       sync-versions: true
+#       project-type: 'maven'        # maven, npm, or hybrid
+#       java-version: '17'          # Java version for Maven projects
+#       node-version: '18'          # Node.js version for NPM projects
+#       maven-working-directory: '.' # Working directory for Maven project
+#       npm-working-directory: '.'   # Working directory for NPM project
 #
 # INPUTS:
-#   - project-type: 'maven', 'npm', or 'hybrid'
-#   - version: Version to set (required for 'set' operation)
-#   - operation: 'get', 'set', 'bump', or 'calculate'
-#   - bump-type: 'patch', 'minor', 'major' (for bump operation)
-#   - base-version: Base version for calculations (e.g., from branch)
-#   - sync-versions: Whether to sync versions between Maven and NPM
-#   - commit-changes: Whether to commit version changes to Git
-#   - commit-message: Custom commit message for version changes
+#   - project-type: Type of project (maven, npm, or hybrid)
+#   - java-version: Java version to use
+#   - node-version: Node.js version to use
+#   - maven-working-directory: Working directory for Maven project
+#   - npm-working-directory: Working directory for NPM project
 #
 # OUTPUTS:
-#   - maven-version: Current Maven version
-#   - npm-version: Current NPM version
-#   - calculated-version: Calculated version based on operation
-#   - version-changed: Whether any version was changed
+#   - maven-version: New Maven version
+#   - npm-version: New NPM version
+#   - old-version: Previous version
+#   - new-version: New version
 # =============================================================================
 
 name: 'Version Management'
-description: 'Manages versions for Maven and NPM projects with synchronization support'
+description: 'Manages version calculation and updates using calculate-version.sh script'
 
 inputs:
   project-type:
     description: 'Type of project (maven, npm, or hybrid)'
     required: true
-    default: 'hybrid'
-  version:
-    description: 'Version to set (required for set operation)'
+  java-version:
+    description: 'Java version to use'
     required: false
-    default: ''
-  operation:
-    description: 'Operation to perform (get, set, bump, calculate)'
+    default: '17'
+  node-version:
+    description: 'Node.js version to use'
     required: false
-    default: 'get'
-  bump-type:
-    description: 'Type of version bump (patch, minor, major)'
+    default: '18'
+  maven-working-directory:
+    description: 'Working directory for Maven project'
     required: false
-    default: 'patch'
-  base-version:
-    description: 'Base version for calculations'
+    default: '.'
+  npm-working-directory:
+    description: 'Working directory for NPM project'
     required: false
-    default: ''
-  sync-versions:
-    description: 'Whether to sync versions between Maven and NPM'
-    required: false
-    default: 'false'
-  commit-changes:
-    description: 'Whether to commit version changes to Git'
-    required: false
-    default: 'false'
-  commit-message:
-    description: 'Custom commit message for version changes'
-    required: false
-    default: ''
+    default: '.'
 
 outputs:
   maven-version:
-    description: 'Current Maven version'
-    value: ${{ steps.version-info.outputs.maven-version }}
+    description: 'New Maven version'
+    value: ${{ steps.version-calc.outputs.maven-version }}
   npm-version:
-    description: 'Current NPM version'
-    value: ${{ steps.version-info.outputs.npm-version }}
-  calculated-version:
-    description: 'Calculated version based on operation'
-    value: ${{ steps.version-info.outputs.calculated-version }}
-  version-changed:
-    description: 'Whether any version was changed'
-    value: ${{ steps.version-info.outputs.version-changed }}
+    description: 'New NPM version'
+    value: ${{ steps.version-calc.outputs.npm-version }}
+  old-version:
+    description: 'Previous version'
+    value: ${{ steps.version-calc.outputs.old-version }}
+  new-version:
+    description: 'New version'
+    value: ${{ steps.version-calc.outputs.new-version }}
 
 runs:
   using: 'composite'
   steps:
-    - name: '🔍 Get Current Versions'
-      id: version-info
-      shell: bash
-      run: |
-        echo "🔍 Getting current versions..."
-        
-        MAVEN_VERSION=""
-        NPM_VERSION=""
-        CALCULATED_VERSION=""
-        VERSION_CHANGED="false"
-        
-        # Get Maven version if applicable
-        if [ "${{ inputs.project-type }}" = "maven" ] || [ "${{ inputs.project-type }}" = "hybrid" ]; then
-          if [ -f "pom.xml" ]; then
-            MAVEN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-            echo "☕ Current Maven version: ${MAVEN_VERSION}"
-          else
-            echo "⚠️ pom.xml not found for Maven project"
-          fi
-        fi
-        
-        # Get NPM version if applicable
-        if [ "${{ inputs.project-type }}" = "npm" ] || [ "${{ inputs.project-type }}" = "hybrid" ]; then
-          if [ -f "package.json" ]; then
-            NPM_VERSION=$(node -p "require('./package.json').version")
-            echo "📦 Current NPM version: ${NPM_VERSION}"
-          else
-            echo "⚠️ package.json not found for NPM project"
-          fi
-        fi
-        
-        # Set outputs
-        echo "maven-version=${MAVEN_VERSION}" >> $GITHUB_OUTPUT
-        echo "npm-version=${NPM_VERSION}" >> $GITHUB_OUTPUT
-        echo "calculated-version=${CALCULATED_VERSION}" >> $GITHUB_OUTPUT
-        echo "version-changed=${VERSION_CHANGED}" >> $GITHUB_OUTPUT
+    - name: 'Setup Java for Maven'
+      if: contains(inputs.project-type, 'maven')
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
 
-    - name: '📊 Calculate Version'
-      if: inputs.operation == 'calculate' && inputs.base-version != ''
+    - name: 'Setup Node.js for NPM'
+      if: contains(inputs.project-type, 'npm')
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: 'Calculate Versions'
+      id: version-calc
       shell: bash
       run: |
-        echo "📊 Calculating version from base: ${{ inputs.base-version }}"
+        echo "📝 Calculating versions using calculate-version.sh..."
         
-        BASE_VERSION="${{ inputs.base-version }}"
-        BUMP_TYPE="${{ inputs.bump-type }}"
-        
-        # Parse version components (e.g., 1.2.3 -> 1, 2, 3)
-        IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-        
-        # Apply bump based on type
-        case "$BUMP_TYPE" in
-          "patch")
-            NEW_PATCH=$((PATCH + 1))
-            CALCULATED_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
-            ;;
-          "minor")
-            NEW_MINOR=$((MINOR + 1))
-            CALCULATED_VERSION="${MAJOR}.${NEW_MINOR}.0"
-            ;;
-          "major")
-            NEW_MAJOR=$((MAJOR + 1))
-            CALCULATED_VERSION="${NEW_MAJOR}.0.0"
-            ;;
-          *)
-            echo "❌ Invalid bump type: $BUMP_TYPE"
-            echo "Valid types: patch, minor, major"
+        # Run version calculation for Maven projects
+        if [[ "${{ inputs.project-type }}" == "maven" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
+          # Get old version from Maven project
+          cd ${{ inputs.maven-working-directory }}
+          OLD_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "Old Maven version: $OLD_VERSION"
+          
+          # Run calculate-version.sh from the library repository
+          echo "Running calculate-version.sh from library repository..."
+          curl -s https://raw.githubusercontent.com/Kingsrook/github-actions-library/main/scripts/calculate-version.sh > calculate-version.sh
+          chmod +x calculate-version.sh
+          
+          # Debug: Check if script was downloaded and is executable
+          echo "Script downloaded, size: $(wc -c < calculate-version.sh)"
+          echo "Script executable: $(ls -la calculate-version.sh)"
+          
+          # Run the script with better error handling
+          echo "Executing calculate-version.sh..."
+          if ./calculate-version.sh --verbose --output-format json > version-output.json 2>script-errors.log; then
+            echo "Script executed successfully"
+            echo "Script output size: $(wc -c < version-output.json)"
+            echo "Script output preview:"
+            head -5 version-output.json
+            echo "Script errors (if any):"
+            cat script-errors.log
+          else
+            echo "Script failed with exit code $?"
+            echo "Script errors:"
+            cat script-errors.log
+            echo "Script output (if any):"
+            cat version-output.json
             exit 1
-            ;;
-        esac
-        
-        echo "🎯 Calculated version: ${CALCULATED_VERSION} (${BUMP_TYPE} increment from ${BASE_VERSION})"
-        
-        # Update outputs
-        echo "calculated-version=${CALCULATED_VERSION}" >> $GITHUB_OUTPUT
-
-    - name: '📝 Set Maven Version'
-      if: (inputs.operation == 'set' || inputs.operation == 'bump') && (inputs.project-type == 'maven' || inputs.project-type == 'hybrid') && contains(fileExists('pom.xml'), 'true')
-      shell: bash
-      run: |
-        echo "📝 Setting Maven version..."
-        
-        if [ "${{ inputs.operation }}" = "set" ]; then
-          NEW_VERSION="${{ inputs.version }}"
-        elif [ "${{ inputs.operation }}" = "bump" ]; then
-          # Get current version and bump it
-          CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          BASE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-SNAPSHOT$//')
-          
-          # Parse and bump version
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-          BUMP_TYPE="${{ inputs.bump-type }}"
-          
-          case "$BUMP_TYPE" in
-            "patch")
-              NEW_PATCH=$((PATCH + 1))
-              NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
-              ;;
-            "minor")
-              NEW_MINOR=$((MINOR + 1))
-              NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
-              ;;
-            "major")
-              NEW_MAJOR=$((MAJOR + 1))
-              NEW_VERSION="${NEW_MAJOR}.0.0"
-              ;;
-          esac
-        fi
-        
-        echo "🚀 Setting Maven version to: ${NEW_VERSION}"
-        mvn versions:set -DnewVersion="${NEW_VERSION}" -DgenerateBackupPoms=false
-        
-        # Update output
-        echo "calculated-version=${NEW_VERSION}" >> $GITHUB_OUTPUT
-        echo "version-changed=true" >> $GITHUB_OUTPUT
-
-    - name: '📝 Set NPM Version'
-      if: (inputs.operation == 'set' || inputs.operation == 'bump') && (inputs.project-type == 'npm' || inputs.project-type == 'hybrid') && contains(fileExists('package.json'), 'true')
-      shell: bash
-      run: |
-        echo "📝 Setting NPM version..."
-        
-        if [ "${{ inputs.operation }}" = "set" ]; then
-          NEW_VERSION="${{ inputs.version }}"
-        elif [ "${{ inputs.operation }}" = "bump" ]; then
-          # Get current version and bump it
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          BASE_VERSION=$(echo "$CURRENT_VERSION" | sed 's/-SNAPSHOT$//')
-          
-          # Parse and bump version
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
-          BUMP_TYPE="${{ inputs.bump-type }}"
-          
-          case "$BUMP_TYPE" in
-            "patch")
-              NEW_PATCH=$((PATCH + 1))
-              NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
-              ;;
-            "minor")
-              NEW_MINOR=$((MINOR + 1))
-              NEW_VERSION="${MAJOR}.${NEW_MINOR}.0"
-              ;;
-            "major")
-              NEW_MAJOR=$((MAJOR + 1))
-              NEW_VERSION="${NEW_MAJOR}.0.0"
-              ;;
-          esac
-        fi
-        
-        echo "🚀 Setting NPM version to: ${NEW_VERSION}"
-        npm version "${NEW_VERSION}" --no-git-tag-version
-        
-        # Update output
-        echo "calculated-version=${NEW_VERSION}" >> $GITHUB_OUTPUT
-        echo "version-changed=true" >> $GITHUB_OUTPUT
-
-    - name: '🔄 Sync Versions Between Maven and NPM'
-      if: inputs.sync-versions == 'true' && inputs.project-type == 'hybrid'
-      shell: bash
-      run: |
-        echo "🔄 Syncing versions between Maven and NPM..."
-        
-        if [ -f "pom.xml" ] && [ -f "package.json" ]; then
-          # Get Maven version as source of truth
-          MAVEN_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo "☕ Maven version (source): ${MAVEN_VERSION}"
-          
-          # Update NPM to match Maven
-          npm version "${MAVEN_VERSION}" --no-git-tag-version
-          echo "📦 NPM version synced to: ${MAVEN_VERSION}"
-          
-          # Update outputs
-          echo "calculated-version=${MAVEN_VERSION}" >> $GITHUB_OUTPUT
-          echo "version-changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "⚠️ Cannot sync versions: both pom.xml and package.json required"
-        fi
-
-    - name: '📝 Commit Version Changes'
-      if: inputs.commit-changes == 'true'
-      shell: bash
-      run: |
-        echo "📝 Committing version changes..."
-        
-        # Configure Git
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        
-        # Add all changes
-        git add .
-        
-        # Check if there are changes to commit
-        if [ -n "$(git status --porcelain)" ]; then
-          COMMIT_MSG="${{ inputs.commit-message }}"
-          if [ -z "$COMMIT_MSG" ]; then
-            COMMIT_MSG="📊 Update versions"
           fi
           
-          git commit -m "$COMMIT_MSG"
-          git push origin ${{ github.ref_name }}
-          echo "✅ Version changes committed and pushed"
-        else
-          echo "ℹ️ No version changes to commit"
+          # Parse JSON output
+          NEW_VERSION=$(cat version-output.json | jq -r '.new_version')
+          echo "New Maven version: $NEW_VERSION"
+          
+          # Set outputs
+          echo "maven-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "old-version=$OLD_VERSION" >> $GITHUB_OUTPUT
+          echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+          cd $GITHUB_WORKSPACE
         fi
-
-    - name: '📋 Version Management Summary'
-      shell: bash
-      run: |
-        echo "📋 Version Management Summary"
-        echo "================================"
-        echo "Project Type: ${{ inputs.project-type }}"
-        echo "Operation: ${{ inputs.operation }}"
-        echo "Maven Version: ${{ steps.version-info.outputs.maven-version || 'N/A' }}"
-        echo "NPM Version: ${{ steps.version-info.outputs.npm-version || 'N/A' }}"
-        echo "Calculated Version: ${{ steps.version-info.outputs.calculated-version || 'N/A' }}"
-        echo "Version Changed: ${{ steps.version-info.outputs.version-changed || 'false' }}"
-        echo "Versions Synced: ${{ inputs.sync-versions }}"
-        echo "Changes Committed: ${{ inputs.commit-changes }}"
+        
+        # Handle NPM projects
+        if [[ "${{ inputs.project-type }}" == "npm" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
+          cd ${{ inputs.npm-working-directory }}
+          
+          # Get old version
+          OLD_VERSION=$(node -p "require('./package.json').version")
+          echo "Old NPM version: $OLD_VERSION"
+          
+          # For NPM, we'll use the same version logic but apply it to package.json
+          # This is a simplified approach - in practice, you might want a separate NPM script
+          if [[ -n "$NEW_VERSION" ]]; then
+            npm version $NEW_VERSION --no-git-tag-version
+            echo "npm-version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          fi
+          
+          cd ../..
+        fi

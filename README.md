@@ -53,10 +53,9 @@ This repository contains reusable GitHub Actions workflows and composite actions
 
 ### Core Actions
 - **`validate-environment`** - Validates required secrets and configurations
-- **`setup-gpg`** - Sets up GPG environment for artifact signing
-- **`version-bump`** - Manages version numbers for Maven and NPM projects
+- **`gpg-signing`** - Sets up GPG environment for artifact signing
+- **`version-management`** - Manages version calculation and updates using calculate-version.sh
 - **`build-test`** - Builds and tests Maven and NPM projects
-- **`publish-artifacts`** - Publishes to Maven Central and NPM
 - **`git-operations`** - Handles Git commit and push operations
 
 ## 📚 Usage Examples

@@ -34,17 +34,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: '🔨 Build and Test Started'
-      shell: bash
-      run: |
-        echo "=========================================="
-        echo "🔨 BUILD AND TEST STARTED"
-        echo "=========================================="
-        echo "Project Type: ${{ inputs.project-type }}"
-        echo "Java Version: ${{ inputs.java-version }}"
-        echo "Node Version: ${{ inputs.node-version }}"
-        echo "=========================================="
-
     - name: 'Setup Java'
       if: contains(inputs.project-type, 'maven')
       uses: actions/setup-java@v4
@@ -81,12 +70,3 @@ runs:
         npm run build
         npm test
         echo "✅ NPM build completed"
-
-    - name: '🔨 Build and Test Complete'
-      shell: bash
-      run: |
-        echo "=========================================="
-        echo "🔨 BUILD AND TEST COMPLETE"
-        echo "=========================================="
-        echo "All projects built and tested successfully"
-        echo "=========================================="

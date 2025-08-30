@@ -121,11 +121,3 @@ runs:
         
         echo "✅ NPM artifacts published"
 
-    - name: '🚀 Publish Artifacts Complete'
-      shell: bash
-      run: |
-        echo "=========================================="
-        echo "🚀 PUBLISH ARTIFACTS COMPLETE"
-        echo "=========================================="
-        echo "All artifacts published successfully"
-        echo "=========================================="

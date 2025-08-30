@@ -62,16 +62,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: '📝 Git Operations Started'
-      shell: bash
-      run: |
-        echo "=========================================="
-        echo "📝 GIT OPERATIONS STARTED"
-        echo "=========================================="
-        echo "Branch: ${{ inputs.branch }}"
-        echo "Commit Message: ${{ inputs.commit-message }}"
-        echo "=========================================="
-
     - name: '📝 Configure Git'
       shell: bash
       run: |
@@ -115,19 +105,5 @@ runs:
         
         # Check if we're on the target branch
         CURRENT_BRANCH=$(git branch --show-current)
-        if [ "$CURRENT_BRANCH" = "${{ inputs.branch }}" ]; then
-          git push origin ${{ inputs.branch }}
-          echo "✅ Changes pushed to ${{ inputs.branch }} branch"
-        else
-          echo "⚠️  Not on ${{ inputs.branch }} branch, skipping push"
-          echo "Current branch: $CURRENT_BRANCH"
-        fi
-
-    - name: '📝 Git Operations Complete'
-      shell: bash
-      run: |
-        echo "=========================================="
-        echo "📝 GIT OPERATIONS COMPLETE"
-        echo "=========================================="
-        echo "All Git operations completed successfully"
-        echo "=========================================="
+        git push origin ${{ inputs.branch }}
+        echo "✅ Changes pushed to ${{ inputs.branch }} branch"

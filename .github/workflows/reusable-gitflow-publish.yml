@@ -260,7 +260,7 @@ jobs:
           echo "✅ NPM token validation passed!"
 
 
-  # ========================================================================
+    # ========================================================================
   # JOB 2: VERSION MANAGEMENT
   # ========================================================================
   # This job handles version management using the calculate-version.sh script
@@ -273,100 +273,19 @@ jobs:
     needs: validate-environment
     if: inputs.skip-version-bump != true
     outputs:
-      maven-version: ${{ steps.version-calc.outputs.maven-version }}
-      npm-version: ${{ steps.version-calc.outputs.npm-version }}
-      old-version: ${{ steps.version-calc.outputs.old-version }}
-      new-version: ${{ steps.version-calc.outputs.new-version }}
+      maven-version: ${{ steps.version-management.outputs.maven-version }}
+      npm-version: ${{ steps.version-management.outputs.npm-version }}
+      old-version: ${{ steps.version-management.outputs.old-version }}
+      new-version: ${{ steps.version-management.outputs.new-version }}
     steps:
-      - name: 'Checkout code'
-        uses: actions/checkout@v4
+      - name: 'Version Management'
+        uses: ./.github/actions/version-management
         with:
-          fetch-depth: 0
-
-      - name: 'Setup Java for Maven'
-        if: contains(inputs.project-type, 'maven')
-        uses: actions/setup-java@v4
-        with:
+          project-type: ${{ inputs.project-type }}
           java-version: ${{ inputs.java-version }}
-          distribution: 'temurin'
-
-      - name: 'Setup Node.js for NPM'
-        if: contains(inputs.project-type, 'npm')
-        uses: actions/setup-node@v4
-        with:
           node-version: ${{ inputs.node-version }}
-
-      - name: 'Calculate'
-        id: version-calc
-        shell: bash
-        run: |
-          echo "📝 Calculating versions using calculate-version.sh..."
-          
-          # Run version calculation for Maven projects
-          if [[ "${{ inputs.project-type }}" == "maven" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
-            # Get old version from Maven project
-            cd ${{ inputs.maven-working-directory }}
-            OLD_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-            echo "Old Maven version: $OLD_VERSION"
-            
-            # Run calculate-version.sh from the library repository
-            echo "Running calculate-version.sh from library repository..."
-            # The script is in the library repo, so we need to access it from there
-            # Since this workflow runs in the calling repo context, we need to reference the library repo
-            curl -s https://raw.githubusercontent.com/Kingsrook/github-actions-library/main/scripts/calculate-version.sh > calculate-version.sh
-            chmod +x calculate-version.sh
-            
-            # Debug: Check if script was downloaded and is executable
-            echo "Script downloaded, size: $(wc -c < calculate-version.sh)"
-            echo "Script executable: $(ls -la calculate-version.sh)"
-            
-            # Run the script with better error handling
-            echo "Executing calculate-version.sh..."
-            if ./calculate-version.sh --verbose --output-format json > version-output.json 2>script-errors.log; then
-              echo "Script executed successfully"
-              echo "Script output size: $(wc -c < version-output.json)"
-              echo "Script output preview:"
-              head -5 version-output.json
-              echo "Script errors (if any):"
-              cat script-errors.log
-            else
-              echo "Script failed with exit code $?"
-              echo "Script errors:"
-              cat script-errors.log
-              echo "Script output (if any):"
-              cat version-output.json
-              exit 1
-            fi
-            
-            # Parse JSON output
-            NEW_VERSION=$(cat version-output.json | jq -r '.new_version')
-            echo "New Maven version: $NEW_VERSION"
-            
-            # Set outputs
-            echo "maven-version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            echo "old-version=$OLD_VERSION" >> $GITHUB_OUTPUT
-            echo "new-version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            
-            cd $GITHUB_WORKSPACE
-          fi
-          
-          # Handle NPM projects
-          if [[ "${{ inputs.project-type }}" == "npm" ]] || [[ "${{ inputs.project-type }}" == "hybrid" ]]; then
-            cd ${{ inputs.npm-working-directory }}
-            
-            # Get old version
-            OLD_VERSION=$(node -p "require('./package.json').version")
-            echo "Old NPM version: $OLD_VERSION"
-            
-            # For NPM, we'll use the same version logic but apply it to package.json
-            # This is a simplified approach - in practice, you might want a separate NPM script
-            if [[ -n "$NEW_VERSION" ]]; then
-              npm version $NEW_VERSION --no-git-tag-version
-              echo "npm-version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            fi
-            
-            cd ../..
-          fi
+          maven-working-directory: ${{ inputs.maven-working-directory }}
+          npm-working-directory: ${{ inputs.npm-working-directory }}
 
   # ========================================================================
   # JOB 3: BUILD AND TEST
@@ -380,9 +299,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management]
     steps:
-      - name: 'Checkout code'
-        uses: actions/checkout@v4
-
       - name: 'Build and Test Projects'
         uses: Kingsrook/github-actions-library/.github/actions/build-test@main
         with:
@@ -404,9 +320,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, build-and-test]
     steps:
-      - name: 'Checkout code'
-        uses: actions/checkout@v4
-
       - name: '🔐 Setup GPG Signing'
         if: contains(inputs.project-type, 'maven')
         uses: Kingsrook/github-actions-library/.github/actions/gpg-signing@main
@@ -491,11 +404,6 @@ jobs:
     needs: [validate-environment, version-management, publish-artifacts]
     if: inputs.skip-version-bump != true
     steps:
-      - name: 'Checkout code'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: 'Git Operations'
         uses: Kingsrook/github-actions-library/.github/actions/git-operations@main
         with:
