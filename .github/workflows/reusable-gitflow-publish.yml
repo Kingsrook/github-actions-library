@@ -96,7 +96,7 @@ jobs:
   # secrets, and configurations. It's designed to fail fast if there are
   # any authentication or configuration issues.
   validate-environment:
-    name: 'Validate'
+    name: '🔍 Validate Environment & Secrets'
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout code'
@@ -104,7 +104,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: '🔍 Environment Validation Started'
+      - name: '🔍 Start Environment Validation Process'
         run: |
           echo "=========================================="
           echo "🔍 ENVIRONMENT VALIDATION STARTED"
@@ -112,7 +112,7 @@ jobs:
           echo "Project Type: ${{ inputs.project-type }}"
           echo "=========================================="
 
-      - name: 'GPG'
+      - name: '🔐 Validate GPG Signing Configuration'
         shell: bash
         run: |
           echo "🔐 Validating GPG configuration..."
@@ -178,7 +178,7 @@ jobs:
           
           echo "✅ GPG secrets validation passed!"
 
-      - name: 'Maven Central'
+      - name: '📦 Validate Maven Central Publishing Credentials'
         if: contains(inputs.project-type, 'maven')
         shell: bash
         run: |
@@ -228,7 +228,7 @@ jobs:
           
           echo "✅ Maven Central secrets validation passed!"
 
-      - name: 'NPM Token'
+      - name: '📦 Validate NPM Registry Authentication Token'
         if: contains(inputs.project-type, 'npm')
         shell: bash
         run: |
@@ -268,7 +268,7 @@ jobs:
   # - Uses calculate-version.sh to determine next version based on branch
   # - Updates version files for both Maven and NPM projects
   version-management:
-    name: 'Version Management'
+    name: '📝 Calculate & Update Version Numbers'
     runs-on: ubuntu-latest
     needs: validate-environment
     if: inputs.skip-version-bump != true
@@ -283,7 +283,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 'Version Management'
+      - name: '📝 Execute Version Calculation & Updates'
         uses: Kingsrook/github-actions-library/.github/actions/version-management@main
         with:
           project-type: ${{ inputs.project-type }}
@@ -292,7 +292,7 @@ jobs:
           maven-working-directory: ${{ inputs.maven-working-directory }}
           npm-working-directory: ${{ inputs.npm-working-directory }}
 
-      - name: 'Upload Modified Files'
+      - name: '📤 Upload Modified Version Files as Artifacts'
         uses: actions/upload-artifact@v4
         with:
           name: modified-files
@@ -309,22 +309,22 @@ jobs:
   # - Runs NPM build and test for NPM projects
   # - Ensures quality before publishing
   build-and-test:
-    name: 'Build'
+    name: '🔨 Build & Test Projects'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management]
     steps:
-      - name: 'Checkout code'
+      - name: '📥 Checkout Source Code Repository'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 'Download Modified Files'
+      - name: '📥 Download Modified Version Files from Artifacts'
         uses: actions/download-artifact@v4
         with:
           name: modified-files
           path: .
 
-      - name: 'Build and Test Projects'
+      - name: '🔨 Execute Maven & NPM Build & Test Pipeline'
         uses: Kingsrook/github-actions-library/.github/actions/build-test@main
         with:
           project-type: ${{ inputs.project-type }}
@@ -341,22 +341,22 @@ jobs:
   # This job publishes artifacts - Maven and NPM handle destinations automatically
   # based on version suffixes (SNAPSHOT, RC, stable)
   publish-artifacts:
-    name: 'Publish'
+    name: '🚀 Publish to Maven Central & NPM'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, build-and-test]
     steps:
-      - name: 'Checkout code'
+      - name: '📥 Checkout Source Code Repository'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 'Download Modified Files'
+      - name: '📥 Download Modified Version Files from Artifacts'
         uses: actions/download-artifact@v4
         with:
           name: modified-files
           path: .
 
-      - name: '🔐 Setup GPG Signing'
+      - name: '🔐 Configure GPG Signing for Artifact Verification'
         if: contains(inputs.project-type, 'maven')
         uses: Kingsrook/github-actions-library/.github/actions/gpg-signing@main
         with:
@@ -365,7 +365,7 @@ jobs:
           gpg-keyname: ${{ secrets.GPG_KEYNAME }}
           test-signing: true
 
-      - name: 'Publish Maven Artifacts'
+      - name: '📦 Deploy Maven Artifacts to Maven Central'
         if: contains(inputs.project-type, 'maven')
         working-directory: ${{ inputs.maven-working-directory }}
         env:
@@ -408,7 +408,7 @@ jobs:
           
           echo "✅ Maven artifacts published"
 
-      - name: 'Publish NPM Artifacts'
+      - name: '📦 Publish NPM Package to Registry'
         if: contains(inputs.project-type, 'npm')
         working-directory: ${{ inputs.npm-working-directory }}
         env:
@@ -435,23 +435,23 @@ jobs:
   # - Pushes changes to the current branch
   # - Creates a commit message with version information
   git-operations:
-    name: 'Git'
+    name: '📝 Commit & Push Version Changes'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, publish-artifacts]
     if: inputs.skip-version-bump != true
     steps:
-      - name: 'Checkout code'
+      - name: '📥 Checkout Source Code Repository'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 'Download Modified Files'
+      - name: '📥 Download Modified Version Files from Artifacts'
         uses: actions/download-artifact@v4
         with:
           name: modified-files
           path: .
 
-      - name: 'Git Operations'
+      - name: '📝 Execute Git Commit & Push Operations'
         uses: Kingsrook/github-actions-library/.github/actions/git-operations@main
         with:
           commit-message: "chore: bump version for next release"
@@ -464,12 +464,12 @@ jobs:
   # ========================================================================
   # This job provides a summary of what was accomplished
   summary:
-    name: 'Summary'
+    name: '📊 Workflow Execution Summary'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, publish-artifacts, git-operations]
     if: always()
     steps:
-      - name: 'Publish Summary'
+      - name: '📊 Generate Workflow Execution Summary Report'
         shell: bash
         run: |
           echo "=========================================="
