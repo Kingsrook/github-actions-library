@@ -278,6 +278,11 @@ jobs:
       old-version: ${{ steps.version-management.outputs.old-version }}
       new-version: ${{ steps.version-management.outputs.new-version }}
     steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: 'Version Management'
         uses: ./.github/actions/version-management
         with:
@@ -286,6 +291,15 @@ jobs:
           node-version: ${{ inputs.node-version }}
           maven-working-directory: ${{ inputs.maven-working-directory }}
           npm-working-directory: ${{ inputs.npm-working-directory }}
+
+      - name: 'Upload Modified Files'
+        uses: actions/upload-artifact@v4
+        with:
+          name: modified-files
+          path: |
+            ${{ inputs.maven-working-directory }}/pom.xml
+            ${{ inputs.npm-working-directory }}/package.json
+          retention-days: 1
 
   # ========================================================================
   # JOB 3: BUILD AND TEST
@@ -320,6 +334,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, build-and-test]
     steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Download Modified Files'
+        uses: actions/download-artifact@v4
+        with:
+          name: modified-files
+          path: .
+
       - name: '🔐 Setup GPG Signing'
         if: contains(inputs.project-type, 'maven')
         uses: Kingsrook/github-actions-library/.github/actions/gpg-signing@main
@@ -404,6 +429,17 @@ jobs:
     needs: [validate-environment, version-management, publish-artifacts]
     if: inputs.skip-version-bump != true
     steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Download Modified Files'
+        uses: actions/download-artifact@v4
+        with:
+          name: modified-files
+          path: .
+
       - name: 'Git Operations'
         uses: Kingsrook/github-actions-library/.github/actions/git-operations@main
         with:
