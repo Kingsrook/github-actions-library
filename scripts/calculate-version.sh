@@ -181,7 +181,7 @@ calculate_next_version() {
             if [[ -n "$RECENT_RELEASE_MERGES" ]] && [[ "$CURRENT_VERSION" =~ -RC\.[0-9]+$ ]]; then
                 # We just merged a release and have an RC version, convert to stable
                 NEW_VERSION="${CURRENT_VERSION%-RC.*}"
-                echo "Release merge detected, converting RC version to stable: $NEW_VERSION"
+                log_debug "Release merge detected, converting RC version to stable: $NEW_VERSION"
             else
                 # No recent release merge or already stable, keep current version
                 NEW_VERSION="$CURRENT_VERSION"
