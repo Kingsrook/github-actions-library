@@ -96,10 +96,10 @@ jobs:
   # secrets, and configurations. It's designed to fail fast if there are
   # any authentication or configuration issues.
   validate-environment:
-    name: '🔍 Validate Environment & Secrets'
+    name: '🔍 Validate Environment and Secrets'
     runs-on: ubuntu-latest
     steps:
-      - name: 'Checkout code'
+      - name: '📥 Checkout Code'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -268,7 +268,7 @@ jobs:
   # - Uses calculate-version.sh to determine next version based on branch
   # - Updates version files for both Maven and NPM projects
   version-management:
-    name: '📝 Calculate & Update Version Numbers'
+    name: '📝 Calculate and Update Version Numbers'
     runs-on: ubuntu-latest
     needs: validate-environment
     if: inputs.skip-version-bump != true
@@ -278,12 +278,12 @@ jobs:
       old-version: ${{ steps.version-management.outputs.old-version }}
       new-version: ${{ steps.version-management.outputs.new-version }}
     steps:
-      - name: 'Checkout code'
+      - name: '📥 Checkout Code'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: '📝 Execute Version Calculation & Updates'
+      - name: '📝 Execute Version Calculation and Updates'
         uses: Kingsrook/github-actions-library/.github/actions/version-management@main
         with:
           project-type: ${{ inputs.project-type }}
@@ -309,11 +309,11 @@ jobs:
   # - Runs NPM build and test for NPM projects
   # - Ensures quality before publishing
   build-and-test:
-    name: '🔨 Build & Test Projects'
+    name: '🔨 Build and Test Projects'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management]
     steps:
-      - name: '📥 Checkout Source Code Repository'
+      - name: '📥 Checkout Code'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -324,7 +324,7 @@ jobs:
           name: modified-files
           path: .
 
-      - name: '🔨 Execute Maven & NPM Build & Test Pipeline'
+      - name: '🔨 Execute Maven and NPM Build and Test Pipeline'
         uses: Kingsrook/github-actions-library/.github/actions/build-test@main
         with:
           project-type: ${{ inputs.project-type }}
@@ -341,11 +341,11 @@ jobs:
   # This job publishes artifacts - Maven and NPM handle destinations automatically
   # based on version suffixes (SNAPSHOT, RC, stable)
   publish-artifacts:
-    name: '🚀 Publish to Maven Central & NPM'
+    name: '🚀 Publish to Maven Central and NPM'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, build-and-test]
     steps:
-      - name: '📥 Checkout Source Code Repository'
+      - name: '📥 Checkout Code'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -435,12 +435,12 @@ jobs:
   # - Pushes changes to the current branch
   # - Creates a commit message with version information
   git-operations:
-    name: '📝 Commit & Push Version Changes'
+    name: '📝 Commit and Push Version Changes'
     runs-on: ubuntu-latest
     needs: [validate-environment, version-management, publish-artifacts]
     if: inputs.skip-version-bump != true
     steps:
-      - name: '📥 Checkout Source Code Repository'
+      - name: '📥 Checkout Code'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -451,7 +451,7 @@ jobs:
           name: modified-files
           path: .
 
-      - name: '📝 Execute Git Commit & Push Operations'
+      - name: '📝 Execute Git Commit and Push Operations'
         uses: Kingsrook/github-actions-library/.github/actions/git-operations@main
         with:
           commit-message: "chore: bump version for next release"
