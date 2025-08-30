@@ -284,7 +284,7 @@ jobs:
           fetch-depth: 0
 
       - name: 'Version Management'
-        uses: ./.github/actions/version-management
+        uses: Kingsrook/github-actions-library/.github/actions/version-management@main
         with:
           project-type: ${{ inputs.project-type }}
           java-version: ${{ inputs.java-version }}
