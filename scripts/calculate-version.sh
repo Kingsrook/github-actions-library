@@ -230,9 +230,17 @@ set_version() {
     log_info "Setting version to: $new_version"
     
     # Use Maven versions plugin to set version
-    if ! mvn versions:set-property -Dproperty=revision -DnewVersion="$new_version" -DgenerateBackupPoms=false; then
-        log_error "Failed to set version using Maven"
-        exit 1
+    # In JSON mode, suppress all Maven output to avoid interfering with JSON parsing
+    if [[ "$OUTPUT_FORMAT" == "json" ]]; then
+        if ! mvn versions:set-property -Dproperty=revision -DnewVersion="$new_version" -DgenerateBackupPoms=false -q -B >/dev/null 2>&1; then
+            log_error "Failed to set version using Maven"
+            exit 1
+        fi
+    else
+        if ! mvn versions:set-property -Dproperty=revision -DnewVersion="$new_version" -DgenerateBackupPoms=false; then
+            log_error "Failed to set version using Maven"
+            exit 1
+        fi
     fi
     
     # Verify the change
